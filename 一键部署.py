@@ -27,7 +27,7 @@ ROUTER_HOST = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-
 ROUTER_PORT = 23
 ROUTER_USER = "root"
 ROUTER_PASS = "Z.123456z"
-EXPECTED_MD5 = "745660251d3d17bb57893f427b6a9295"
+EXPECTED_MD5 = "266b6151a144f8b89d2e70fb45847b54"
 HTTP_PORT = 8000
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
