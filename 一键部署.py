@@ -158,7 +158,7 @@ def get_router_host() -> str:
     default_ip = "192.168.5.1"
     while True:
         try:
-            user_ip = input(f"请输入路由器管理后台 IP [直接回车使用 {default_ip}]: ").strip()
+            user_ip = input(f"请输入路由器管理后台 IP [出厂默认直接回车: {default_ip}]: ").strip()
             target = user_ip if user_ip else default_ip
             parts = target.split(".")
             if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
@@ -215,7 +215,7 @@ def get_local_lan_ip(target_ip: str) -> str:
     print(f"\n[!] 提示: 无法自动侦测本机与路由器 ({target_ip}) 通信的局域网 IP。")
     while True:
         try:
-            user_ip = input(">>> 请手动输入本机在路由器局域网中的 IP 地址 (例如 192.168.5.1): ").strip()
+            user_ip = input(f">>> 请手动输入本机在路由器局域网中的 IP 地址 (例如 {target_prefix}X): ").strip()
             parts = user_ip.split(".")
             if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
                 return user_ip

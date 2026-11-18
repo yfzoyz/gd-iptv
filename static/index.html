@@ -234,7 +234,7 @@ h1 .logo-icon{width:22px;height:22px;stroke:var(--primary);fill:none;stroke-widt
     <div class="check-row">
       <label><input type="checkbox" id="enable_playlist"> 生成播放列表 (M3U)</label>
       <label><input type="checkbox" id="enable_xmltv"> 生成 EPG (XMLTV 电子节目单)</label>
-      <label><input type="checkbox" id="enable_logo"> 频道高清图标 (微内核自动缓存)</label>
+      <label><input type="checkbox" id="enable_logo"> 频道台标 (按需代理缓存，适配电视端大屏)</label>
       <label><input type="checkbox" id="enable_top_channels"> 置顶频道副本 (CCTV、广东卫视优先置顶)</label>
     </div>
   </div>
@@ -246,8 +246,6 @@ h1 .logo-icon{width:22px;height:22px;stroke:var(--primary);fill:none;stroke-widt
         保存配置
       </button>
       <button class="btn btn-secondary" id="testBtn">测试 IPTV 连接</button>
-      <button class="btn btn-secondary" id="clearLogoBtn">清理图标缓存</button>
-      <span class="meta-note" id="cacheInfo"></span>
     </div>
   </div>
 
@@ -365,7 +363,6 @@ async function loadStatus(){
   const r=await api('/api/status');
   const s=await r.json();
   if(s.version)$('verBadge').textContent='v'+s.version;
-  if(s.logo_cache_count!==undefined)$('cacheInfo').textContent='已缓存图标：'+s.logo_cache_count+' 个';
 }
 $('saveBtn').addEventListener('click',async()=>{
   const btn=$('saveBtn');
@@ -413,14 +410,7 @@ $('testBtn').addEventListener('click',async()=>{
   }catch(e){if(!(e instanceof AuthError))toast('请求失败：'+e.message,'error')}
   finally{btn.disabled=false;btn.textContent='测试 IPTV 连接'}
 });
-$('clearLogoBtn').addEventListener('click',async()=>{
-  try{
-    const r=await api('/api/clear-logo-cache',{method:'POST'});
-    const j=await r.json().catch(()=>({}));
-    if(j.ok){toast(j.message||'已清空','success');await loadStatus()}
-    else toast('清理失败：'+(j.error||'未知错误'),'error');
-  }catch(e){if(!(e instanceof AuthError))toast('清理失败：'+e.message,'error')}
-});
+
 function refreshUrls(){const b=location.origin;$('m3uUrl').textContent=b+'/playlist';$('epgUrl').textContent=b+'/xmltv'}
 function copyText(text){
   if(!text||text.includes('尚未')){toast('请先生成','error');return}
