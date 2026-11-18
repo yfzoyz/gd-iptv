@@ -350,7 +350,9 @@ mod tests {
         // 重复与乱序丢弃
         assert!(!f.accept(1));
         assert!(!f.accept(65535));
-        // 上游重启序号：连续 8 包后自动重同步
+        // 正常包到来会重置连续乱序计数
+        assert!(f.accept(2));
+        // 上游重启序号：连续 8 包落在窗口外后自动重同步
         for i in 0..7 {
             assert!(!f.accept(10000 + i));
         }
