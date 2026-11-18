@@ -65,7 +65,7 @@ fn build_logger(spec: &str) -> (SimpleLogger, LevelFilter) {
     }
 
     // 较长前缀优先匹配
-    rules.sort_by(|a, b| b.target.len().cmp(&a.target.len()));
+    rules.sort_by_key(|a| std::cmp::Reverse(a.target.len()));
 
     (
         SimpleLogger {
