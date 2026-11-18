@@ -155,7 +155,7 @@ def get_router_host() -> str:
     env_val = os.environ.get("ROUTER_HOST", "").strip()
     if env_val:
         return env_val
-    default_ip = "192.168.1.2"
+    default_ip = "192.168.5.1"
     while True:
         try:
             user_ip = input(f"请输入路由器管理后台 IP [直接回车使用 {default_ip}]: ").strip()
