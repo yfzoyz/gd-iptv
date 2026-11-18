@@ -42,22 +42,24 @@ curl -fsSL https://raw.githubusercontent.com/yfzoyz/gd-iptv/main/install.sh | sh
 
 > 在 OpenWrt 上，脚本会自动生成 `/etc/init.d/gd-iptv-panel`（procd），并将图标缓存指向 `/tmp/gd-iptv-panel/logo-cache`（内存盘），避免写入路由器闪存。
 
-### 方式 B：ZXSLC SR6211 / 中兴只读根分区路由器（ARM64 / Linux 4.1.25 / BusyBox）
+### 方式 B：ZXSLC SR6211 / 中兴 AX5400 Pro+ 路由器（ARM64 / Linux 4.1.25 / 一键自动化）
 
-针对根分区只读、无 Swap、`/UUPlugin`（4.7 MB）或 `/status`（4.6 MB）空间紧张的路由器，推荐使用 `arm64-upx` 静态二进制，并将缓存与 PID 放到 `/tmp` 内存盘实现零闪存磨损：
+针对中兴 AX5400 Pro+（ZXSLC SR6211），提供纯 Python 零依赖的 Windows **一键自动化部署程序**：
 
-```sh
-mkdir -p /UUPlugin/gd-iptv-panel /tmp/gd-iptv-panel/logo-cache
+1. **一键部署**：
+   在电脑端直接双击运行 `一键部署.bat`（或 `python 一键部署.py`），脚本将自动完成：
+   - 检查 Telnet 连通性并自动完成局域网极速文件下发；
+   - 固化程序至 `/UUPlugin/` 分区（仅占 545 KB，剩余 >4MB）；
+   - 内存盘零磨损架构：日志与台标缓存全部分流在 `/tmp`；
+   - **原厂后台独立选项卡与开关**：自动在路由器后台（`http://192.168.1.2/#/app/application`）挂载独立的「广东 IPTV」选项卡与独立控制开关，且**完全独立，绝不影响网易 UU 插件、玩辰插件、节点小宝三个原厂开关**；
+   - 固化冷启动自启机制，路由器重启断电自动恢复；
+   - 自动化端到端健康检查并打印订阅地址。
 
-# 下载 UPX 压缩版静态 ARM64 二进制（约 500~700 KB，无 glibc 依赖，兼容 Linux 4.1.25）
-curl -fsSL -o /UUPlugin/gd-iptv-panel/gd-iptv-panel \
-  https://github.com/yfzoyz/gd-iptv/releases/latest/download/gd-iptv-panel-linux-arm64-upx
-chmod +x /UUPlugin/gd-iptv-panel/gd-iptv-panel
+2. **路由器强制还原/恢复出厂设置后的恢复流程**：
+   - 第一步：打开浏览器登录路由器后台 `http://192.168.1.2`，在「系统管理」->「备份与恢复」->「恢复配置」中上传 `AX5400 Pro+\解锁Telnet-config.bin` 激活 Telnet；
+   - 第二步：重启完成后，双击电脑上的 `一键部署.bat`，即可一键全自动恢复全部 IPTV 服务！
 
-# 后台启动（配置文件存 NAND，图标缓存与 PID/日志存 tmpfs）
-RUST_LOG=info,hyper=warn,retina=warn \
-  /UUPlugin/gd-iptv-panel/gd-iptv-panel \
-  -c /UUPlugin/gd-iptv-panel/config.json \
+---
   -d /tmp/gd-iptv-panel/logo-cache \
   -p /tmp/gd-iptv-panel/gd-iptv-panel.pid >/tmp/gd-iptv-panel/gd-iptv-panel.log 2>&1 &
 ```

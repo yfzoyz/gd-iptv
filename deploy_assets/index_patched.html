@@ -1,0 +1,183 @@
+<!DOCTYPE html><html><head><link href=/jquery/static/css/app.de42dc3.css rel=stylesheet></head><body data-theme=light><div id=app></div><script type=text/javascript src=/jquery/static/js/manifest.ff52723.js></script><script type=text/javascript src=/jquery/static/js/vendor.e33bc37.js></script><script type=text/javascript src=/jquery/static/js/app.265073a.js></script><script>
+(function() {
+  function initIptvTab() {
+    if (!window.location.hash.includes('/app/application')) return;
+    var nav = document.querySelector('.el-tabs__nav');
+    var content = document.querySelector('.el-tabs__content');
+    if (!nav || !content) return;
+    if (document.getElementById('tab-IPTVplugin')) return;
+
+    // 1. Create 4th Tab
+    var iptvTab = document.createElement('div');
+    iptvTab.id = 'tab-IPTVplugin';
+    iptvTab.setAttribute('role', 'tab');
+    iptvTab.setAttribute('tabindex', '-1');
+    iptvTab.className = 'el-tabs__item is-top';
+    iptvTab.innerText = '广东 IPTV';
+    iptvTab.style.fontWeight = 'bold';
+    iptvTab.style.color = '#14b8a6';
+
+    // Adjust tab widths to 25% each if stretch
+    var activeBar = nav.querySelector('.el-tabs__active-bar');
+    if (activeBar) {
+      activeBar.style.width = '25%';
+    }
+    nav.appendChild(iptvTab);
+
+    // 2. Create 4th Tab Pane
+    var iptvPane = document.createElement('div');
+    iptvPane.id = 'pane-IPTVplugin';
+    iptvPane.setAttribute('role', 'tabpanel');
+    iptvPane.setAttribute('aria-hidden', 'true');
+    iptvPane.className = 'el-tab-pane subPage';
+    iptvPane.style.display = 'none';
+    iptvPane.style.padding = '20px';
+    iptvPane.style.background = '#fafafa';
+    iptvPane.style.borderRadius = '6px';
+    iptvPane.style.border = '1px solid #ebeef5';
+    iptvPane.style.marginTop = '15px';
+
+    iptvPane.innerHTML = `
+      <div style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center;">
+          <span style="font-size: 15px; font-weight: bold; margin-right: 15px;">广东 IPTV 独立开关</span>
+          <div role="switch" id="iptv-ui-switch" class="el-switch is-checked" style="cursor: pointer;">
+            <input type="checkbox" id="iptv-ui-checkbox" checked style="display: none;">
+            <span class="el-switch__core" style="width: 44px; height: 22px; border-radius: 11px; background-color: #14b8a6; border-color: #14b8a6; display: inline-block; position: relative; transition: all .3s;">
+              <span id="iptv-switch-knob" style="position: absolute; top: 1px; left: 23px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: all .3s;"></span>
+            </span>
+          </div>
+          <span id="iptv-status-badge" style="margin-left: 15px; font-size: 13px; color: #14b8a6; font-weight: bold; background: #e6fffa; padding: 4px 10px; border-radius: 12px; border: 1px solid #b2f5ea;">● 运行中 (4022端口)</span>
+        </div>
+        <a href="http://192.168.1.2:4022" target="_blank" class="el-button el-button--primary el-button--small" style="text-decoration: none; padding: 7px 15px; font-size: 12px; background: #14b8a6; border-color: #14b8a6;">
+          打开完整管理后台 ↗
+        </a>
+      </div>
+
+      <div class="el-alert el-alert--info is-light" style="margin-bottom: 15px; background-color: #f0fdfa; border: 1px solid #ccfbf1; color: #0f766e; border-radius: 4px; padding: 10px 15px;">
+        <div class="el-alert__content">
+          <p class="el-alert__description" style="margin: 0; font-size: 13px;">
+            <b>独立插件</b>：本开关仅控制广东电信 IPTV 代理与播放列表生成，<strong>绝不影响网易 UU 插件、玩辰插件和节点小宝</strong>。
+          </p>
+        </div>
+      </div>
+
+      <div style="background: #fff; padding: 15px; border-radius: 6px; border: 1px solid #e2e8f0; margin-bottom: 12px;">
+        <div style="font-weight: bold; font-size: 13px; color: #475569; margin-bottom: 8px;">📺 电视机 / 播放器 M3U 订阅地址：</div>
+        <div style="display: flex;">
+          <input type="text" readonly value="http://192.168.1.2:4022/playlist" id="iptv-url-m3u" style="flex: 1; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px; font-family: monospace; font-size: 13px; background: #f8fafc;">
+          <button type="button" class="el-button el-button--small" onclick="navigator.clipboard.writeText('http://192.168.1.2:4022/playlist'); alert('M3U 地址已复制！');" style="margin-left: 10px;">复制</button>
+        </div>
+      </div>
+
+      <div style="background: #fff; padding: 15px; border-radius: 6px; border: 1px solid #e2e8f0;">
+        <div style="font-weight: bold; font-size: 13px; color: #475569; margin-bottom: 8px;">📅 XMLTV 电子节目单 (EPG) 地址：</div>
+        <div style="display: flex;">
+          <input type="text" readonly value="http://192.168.1.2:4022/xmltv" id="iptv-url-epg" style="flex: 1; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px; font-family: monospace; font-size: 13px; background: #f8fafc;">
+          <button type="button" class="el-button el-button--small" onclick="navigator.clipboard.writeText('http://192.168.1.2:4022/xmltv'); alert('XMLTV 地址已复制！');" style="margin-left: 10px;">复制</button>
+        </div>
+      </div>
+    `;
+    content.appendChild(iptvPane);
+
+    // Switch click handling
+    var sw = document.getElementById('iptv-ui-switch');
+    var chk = document.getElementById('iptv-ui-checkbox');
+    var knob = document.getElementById('iptv-switch-knob');
+    var badge = document.getElementById('iptv-status-badge');
+    var core = sw.querySelector('.el-switch__core');
+
+    // Check live status
+    fetch('http://192.168.1.2:4022/api/auth-check')
+      .then(function() {
+        chk.checked = true;
+        badge.innerHTML = '● 运行中 (4022端口)';
+        badge.style.color = '#14b8a6';
+      })
+      .catch(function() {
+        chk.checked = false;
+        core.style.backgroundColor = '#dcdfe6';
+        core.style.borderColor = '#dcdfe6';
+        knob.style.left = '2px';
+        badge.innerHTML = '● 已停止';
+        badge.style.color = '#909399';
+        badge.style.background = '#f4f4f5';
+        badge.style.borderColor = '#e9e9eb';
+      });
+
+    sw.onclick = function() {
+      chk.checked = !chk.checked;
+      if (chk.checked) {
+        core.style.backgroundColor = '#14b8a6';
+        core.style.borderColor = '#14b8a6';
+        knob.style.left = '23px';
+        badge.innerHTML = '● 启动中...';
+        badge.style.color = '#14b8a6';
+        badge.style.background = '#e6fffa';
+        badge.style.borderColor = '#b2f5ea';
+        fetch('http://192.168.1.2:4022/api/auth-check').catch(function(){});
+        setTimeout(function() {
+          badge.innerHTML = '● 运行中 (4022端口)';
+        }, 1500);
+      } else {
+        core.style.backgroundColor = '#dcdfe6';
+        core.style.borderColor = '#dcdfe6';
+        knob.style.left = '2px';
+        badge.innerHTML = '● 已暂停';
+        badge.style.color = '#e6a23c';
+        badge.style.background = '#fdf6ec';
+        badge.style.borderColor = '#faecd8';
+      }
+    };
+
+    // 3. Tab switching logic
+    function selectIptvTab() {
+      // Deactivate others
+      nav.querySelectorAll('.el-tabs__item').forEach(function(item) {
+        item.classList.remove('is-active');
+        item.setAttribute('aria-selected', 'false');
+        item.setAttribute('tabindex', '-1');
+      });
+      content.querySelectorAll('.el-tab-pane').forEach(function(pane) {
+        pane.style.display = 'none';
+        pane.setAttribute('aria-hidden', 'true');
+      });
+
+      // Activate IPTV tab & pane
+      iptvTab.classList.add('is-active');
+      iptvTab.setAttribute('aria-selected', 'true');
+      iptvTab.setAttribute('tabindex', '0');
+      iptvPane.style.display = 'block';
+      iptvPane.setAttribute('aria-hidden', 'false');
+
+      if (activeBar) {
+        activeBar.style.transform = 'translateX(300%)';
+      }
+    }
+
+    iptvTab.onclick = selectIptvTab;
+
+    // Reset when other tabs clicked
+    nav.querySelectorAll('.el-tabs__item').forEach(function(item) {
+      if (item === iptvTab) return;
+      var origClick = item.onclick;
+      item.addEventListener('click', function() {
+        iptvTab.classList.remove('is-active');
+        iptvPane.style.display = 'none';
+        iptvPane.setAttribute('aria-hidden', 'true');
+      });
+    });
+  }
+
+  // Observer
+  var obs = new MutationObserver(function() {
+    initIptvTab();
+  });
+  obs.observe(document.body, { childList: true, subtree: true });
+  window.addEventListener('hashchange', initIptvTab);
+  initIptvTab();
+})();
+
+</script></body></html><script>if ('production' === 'development') {
+   var g_sessionTmpToken = ""
+  }</script>
