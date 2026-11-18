@@ -10,7 +10,8 @@
   3. 全自动 MD5 完整性校验与内存盘零磨损架构部署；
   4. 自动在路由器原厂后台挂载独立的「IPTV插件」选项卡与控制开关，
      且完全独立运行，绝不影响网易 UU 插件、玩辰插件、节点小宝这三个原厂插件开关；
-  5. 零凭据硬编码、全自适应 IP 探测与安全交互式输入回退。
+  5. 零凭据硬编码：密码纯交互式输入（无回显掩码）或环境变量注入，绝不内嵌任何密码；
+  6. 全自适应局域网 IP 探测（基于内核路由表 UDP connect 查询），绝不硬编码假 IP。
 """
 
 import functools
@@ -90,7 +91,7 @@ class TelnetClient:
         self.sock.sendall((self.passwd + "\n").encode("utf-8"))
         login_out = self._recv_until([b"# ", b"$ ", b"/ #"], timeout=5)
         if b"incorrect" in login_out.lower() or b"failed" in login_out.lower():
-            raise RuntimeError(f"Telnet 登录失败，请核对密码！返回信息: {login_out.decode('utf-8', 'replace').strip()}")
+            raise RuntimeError(f"Telnet 登录失败，密码错误！返回信息: {login_out.decode('utf-8', 'replace').strip()}")
         self._drain(0.4)
 
     def _recv_until(self, markers: list, timeout: float = 8.0) -> bytes:
@@ -148,36 +149,39 @@ class TelnetClient:
             self.sock = None
 
 def get_router_host() -> str:
-    """获取目标路由器 IP：优先 CLI 参数 -> 环境变量 -> 交互输入 -> 默认值"""
+    """获取目标路由器 IP：优先 CLI 参数 -> 环境变量 -> 交互输入 (默认 192.168.1.2)"""
     if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
         return sys.argv[1].strip()
     env_val = os.environ.get("ROUTER_HOST", "").strip()
     if env_val:
         return env_val
     default_ip = "192.168.1.2"
-    if sys.stdin.isatty():
+    while True:
         try:
-            user_ip = input(f"请输入路由器管理后台 IP [直接回车默认: {default_ip}]: ").strip()
-            if user_ip:
-                return user_ip
-        except Exception:
-            pass
-    return default_ip
+            user_ip = input(f"请输入路由器管理后台 IP [直接回车使用 {default_ip}]: ").strip()
+            target = user_ip if user_ip else default_ip
+            parts = target.split(".")
+            if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
+                return target
+            print("[-] IP 格式不正确，请重新输入。")
+        except (KeyboardInterrupt, EOFError):
+            print("\n用户已取消操作。")
+            sys.exit(1)
 
 def get_router_pass() -> str:
-    """获取路由器 Telnet 密码：优先环境变量 -> 掩码交互输入 -> 出厂默认值"""
-    env_pass = os.environ.get("ROUTER_PASS", "")
+    """获取路由器 Telnet 管理密码：优先环境变量 -> 交互式安全掩码输入 (杜绝硬编码泄露)"""
+    env_pass = os.environ.get("ROUTER_PASS", "").strip()
     if env_pass:
         return env_pass
-    default_pass = "Z.123456z"
-    if sys.stdin.isatty():
+    while True:
         try:
-            p = getpass.getpass("请输入路由器 Telnet 密码 [直接回车尝试出厂默认密码]: ")
+            p = getpass.getpass("请输入路由器 Telnet 管理密码: ").strip()
             if p:
                 return p
-        except Exception:
-            pass
-    return default_pass
+            print("[-] 密码不能为空，请输入您的路由器 Telnet 管理密码。")
+        except (KeyboardInterrupt, EOFError):
+            print("\n用户已取消操作。")
+            sys.exit(1)
 
 def get_local_lan_ip(target_ip: str) -> str:
     """
@@ -210,11 +214,15 @@ def get_local_lan_ip(target_ip: str) -> str:
     # 离线或异常网络交互式安全回退
     print(f"\n[!] 提示: 无法自动侦测本机与路由器 ({target_ip}) 通信的局域网 IP。")
     while True:
-        user_ip = input(">>> 请手动输入本机在路由器局域网中的 IP 地址 (例如 192.168.1.X): ").strip()
-        parts = user_ip.split(".")
-        if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
-            return user_ip
-        print("[-] 输入的 IP 格式不正确，请重新输入。")
+        try:
+            user_ip = input(">>> 请手动输入本机在路由器局域网中的 IP 地址 (例如 192.168.1.X): ").strip()
+            parts = user_ip.split(".")
+            if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
+                return user_ip
+            print("[-] 输入的 IP 格式不正确，请重新输入。")
+        except (KeyboardInterrupt, EOFError):
+            print("\n用户已取消操作。")
+            sys.exit(1)
 
 def main():
     print("=" * 66)
@@ -348,7 +356,10 @@ def main():
 
     print()
     if sys.stdin.isatty():
-        input("按回车键退出本程序...")
+        try:
+            input("按回车键退出本程序...")
+        except (KeyboardInterrupt, EOFError):
+            pass
 
 if __name__ == "__main__":
     main()
