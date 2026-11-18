@@ -46,7 +46,7 @@ pub struct IptvConfig {
 pub struct ProxyConfig {
     #[serde(default = "default_true")]
     pub udp_proxy: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub rtsp_proxy: bool,
     #[serde(default = "default_true")]
     pub include_catchup: bool,
@@ -64,7 +64,7 @@ impl Default for ProxyConfig {
     fn default() -> Self {
         Self {
             udp_proxy: true,
-            rtsp_proxy: false,
+            rtsp_proxy: true,
             include_catchup: true,
             playseek_template: default_playseek(),
             fcc_server: String::new(),

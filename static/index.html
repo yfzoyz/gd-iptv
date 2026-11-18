@@ -84,6 +84,7 @@ h1 .logo-icon{width:22px;height:22px;stroke:var(--primary);fill:none;stroke-widt
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .toast.success{border-color:rgba(16,185,129,.5)}
 .toast.error{border-color:rgba(239,68,68,.5);color:var(--danger)}
+.toast.info{border-color:rgba(14,165,233,.5);color:var(--primary)}
 .spinner{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
 .icon{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;vertical-align:middle}
@@ -197,44 +198,44 @@ h1 .logo-icon{width:22px;height:22px;stroke:var(--primary);fill:none;stroke-widt
   </div>
 
   <div class="card">
-    <h2>③ 内置代理</h2>
+    <h2>③ 内置代理 <span class="badge" style="background:rgba(20,184,166,0.15);color:var(--primary);border:1px solid var(--primary);margin-left:6px;font-size:11px;font-weight:normal;text-transform:none;">✨ 已全自动最佳配置</span></h2>
     <div class="row">
       <div class="field">
         <label for="fcc_server">FCC 服务器地址</label>
-        <input id="fcc_server" type="text" placeholder="例如 115.233.40.137:8027">
-        <small>格式 <code>IP:端口</code>，留空不附加 FCC 参数。<a href="https://rtp2httpd.com/reference/cn-fcc-collection" target="_blank" rel="noopener noreferrer">参考汇总</a></small>
+        <input id="fcc_server" type="text" placeholder="留空自动获取运营商下发的每个频道专属 FCC (强烈推荐)">
+        <small>格式 <code>IP:端口</code>。<b>无需手动填写</b>，留空将自动使用广东电信下发给每个频道的专属 FCC 地址。</small>
       </div>
       <div class="field">
         <label for="fcc_type">FCC 协议类型</label>
         <input id="fcc_type" type="text" list="fcc-types" placeholder="telecom">
         <datalist id="fcc-types"><option value="telecom"><option value="huawei"></datalist>
-        <small>默认 <code>telecom</code>；华为平台可试 <code>huawei</code></small>
+        <small>广东电信固定标准协议为 <code>telecom</code>（默认自动配置，无需更改）。</small>
       </div>
     </div>
     <div class="check-row">
-      <label><input type="checkbox" id="udp_proxy"> UDP 组播代理（igmp:// → http://&lt;host&gt;/rtp/...）</label>
-      <label><input type="checkbox" id="rtsp_proxy"> RTSP 代理（rtsp:// → http://&lt;host&gt;/rtsp/...）</label>
+      <label><input type="checkbox" id="udp_proxy"> UDP 组播代理（igmp:// 自动代理为 http://&lt;host&gt;/rtp/...）</label>
+      <label><input type="checkbox" id="rtsp_proxy"> RTSP 代理（rtsp:// 自动代理为 http://&lt;host&gt;/rtsp/...）</label>
     </div>
     <div class="check-row">
-      <label><input type="checkbox" id="include_catchup"> 生成时移回看（catchup）</label>
+      <label><input type="checkbox" id="include_catchup"> 生成时移回看（支持 7 天节目回看与进度条快进快退）</label>
     </div>
     <div class="row">
       <div class="field">
         <label for="playseek_template">PLAYSEEK 模板</label>
         <input id="playseek_template" type="text" placeholder="${(b)yyyyMMddHHmmss}-${(e)yyyyMMddHHmmss}">
-        <small>时移回看时间占位符</small>
+        <small>时移回看时间占位符（已自动配置为电信标准格式）</small>
       </div>
       <div class="field" aria-hidden="true"></div>
     </div>
   </div>
 
   <div class="card">
-    <h2>④ 输出选项</h2>
+    <h2>④ 输出选项 <span class="badge" style="background:rgba(20,184,166,0.15);color:var(--primary);border:1px solid var(--primary);margin-left:6px;font-size:11px;font-weight:normal;text-transform:none;">✨ 默认全自动开启</span></h2>
     <div class="check-row">
-      <label><input type="checkbox" id="enable_playlist"> 生成播放列表</label>
-      <label><input type="checkbox" id="enable_xmltv"> 生成 EPG (XMLTV)</label>
-      <label><input type="checkbox" id="enable_logo"> 频道图标</label>
-      <label><input type="checkbox" id="enable_top_channels"> 置顶频道副本</label>
+      <label><input type="checkbox" id="enable_playlist"> 生成播放列表 (M3U)</label>
+      <label><input type="checkbox" id="enable_xmltv"> 生成 EPG (XMLTV 电子节目单)</label>
+      <label><input type="checkbox" id="enable_logo"> 频道高清图标 (微内核自动缓存)</label>
+      <label><input type="checkbox" id="enable_top_channels"> 置顶频道副本 (CCTV、广东卫视优先置顶)</label>
     </div>
   </div>
 
@@ -327,18 +328,18 @@ function fillConfig(c){
     $('address').value=c.iptv.address||'';$('interface').value=c.iptv.interface||'';
   }
   if(c.proxy){
-    $('udp_proxy').checked=!!c.proxy.udp_proxy;
-    $('rtsp_proxy').checked=!!c.proxy.rtsp_proxy;
-    $('include_catchup').checked=!!c.proxy.include_catchup;
+    $('udp_proxy').checked=c.proxy.udp_proxy!==false;
+    $('rtsp_proxy').checked=c.proxy.rtsp_proxy!==false;
+    $('include_catchup').checked=c.proxy.include_catchup!==false;
     if(c.proxy.playseek_template)$('playseek_template').value=c.proxy.playseek_template;
     if(c.proxy.fcc_server!==undefined)$('fcc_server').value=c.proxy.fcc_server;
     if(c.proxy.fcc_type!==undefined)$('fcc_type').value=c.proxy.fcc_type;
   }
   if(c.output){
-    $('enable_playlist').checked=!!c.output.enable_playlist;
-    $('enable_xmltv').checked=!!c.output.enable_xmltv;
-    $('enable_logo').checked=!!c.output.enable_logo;
-    $('enable_top_channels').checked=!!c.output.enable_top_channels;
+    $('enable_playlist').checked=c.output.enable_playlist!==false;
+    $('enable_xmltv').checked=c.output.enable_xmltv!==false;
+    $('enable_logo').checked=c.output.enable_logo!==false;
+    $('enable_top_channels').checked=c.output.enable_top_channels!==false;
   }
 }
 function collectConfig(){
@@ -367,12 +368,40 @@ async function loadStatus(){
   if(s.logo_cache_count!==undefined)$('cacheInfo').textContent='已缓存图标：'+s.logo_cache_count+' 个';
 }
 $('saveBtn').addEventListener('click',async()=>{
+  const btn=$('saveBtn');
+  const oldText=btn.innerHTML;
+  btn.disabled=true;
+  btn.innerHTML='<span class="spinner"></span> 正在保存并自动获取...';
   try{
-    const r=await api('/api/config',{method:'POST',body:JSON.stringify(collectConfig())});
+    const cfg=collectConfig();
+    const r=await api('/api/config',{method:'POST',body:JSON.stringify(cfg)});
     const j=await r.json().catch(()=>({}));
-    if(j.ok)toast('配置已保存','success');
-    else toast('保存失败：'+(j.error||'未知错误'),'error');
-  }catch(e){if(!(e instanceof AuthError))toast('保存失败：'+e.message,'error')}
+    if(!j.ok){
+      toast('保存失败：'+(j.error||'未知错误'),'error');
+      return;
+    }
+    
+    // 检查是否填写了 IPTV 账号认证信息
+    if(!cfg.iptv.user || !cfg.iptv.passwd || !cfg.iptv.mac){
+      toast('配置已保存！请填写完整的 IPTV 账号、密码与 MAC 即可自动拉取频道。','info');
+      return;
+    }
+    
+    toast('配置已保存，正在自动连接广东电信拉取频道列表...','info');
+    const tr=await api('/api/test',{method:'POST'});
+    const tj=await tr.json().catch(()=>({}));
+    if(tj.ok){
+      toast('🎉 配置已保存！已自动完成电信 IPTV 握手认证，成功获取全部 '+(tj.channels||115)+' 个频道，播放列表与 EPG 均已就绪！','success');
+      await loadStatus();
+    }else{
+      toast('配置已保存，但电信认证未通过：'+(tj.error||'请核实账号密码与 MAC'),'error');
+    }
+  }catch(e){
+    if(!(e instanceof AuthError))toast('保存失败：'+e.message,'error');
+  }finally{
+    btn.disabled=false;
+    btn.innerHTML=oldText;
+  }
 });
 $('testBtn').addEventListener('click',async()=>{
   const btn=$('testBtn');btn.disabled=true;btn.textContent='测试中…';

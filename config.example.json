@@ -12,7 +12,7 @@
   },
   "proxy": {
     "udp_proxy": true,
-    "rtsp_proxy": false,
+    "rtsp_proxy": true,
     "include_catchup": true,
     "playseek_template": "${(b)yyyyMMddHHmmss}-${(e)yyyyMMddHHmmss}",
     "fcc_server": "",

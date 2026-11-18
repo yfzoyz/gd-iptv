@@ -1,6 +1,6 @@
 [package]
 name = "gd-iptv-panel"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2021"
 description = "Lightweight Guangdong Telecom IPTV playlist, EPG & RTSP/UDP proxy panel for routers"
 
