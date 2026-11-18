@@ -1,0 +1,129 @@
+name: 🦀 构建静态二进制
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '发布 tag（如 v0.3.1，留空则只构建不发布）'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  build:
+    name: 构建 ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            artifact: gd-iptv-panel-linux-amd64
+            linker: ''
+            pkg: musl-tools
+          - target: aarch64-unknown-linux-musl
+            artifact: gd-iptv-panel-linux-arm64
+            linker: aarch64-linux-gnu-gcc
+            pkg: gcc-aarch64-linux-gnu
+          - target: armv7-unknown-linux-musleabihf
+            artifact: gd-iptv-panel-linux-armv7
+            linker: arm-linux-gnueabihf-gcc
+            pkg: gcc-arm-linux-gnueabihf
+
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: 安装 musl 交叉工具链与 UPX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools upx-ucl ${{ matrix.pkg }}
+
+      - name: 配置 linker
+        if: matrix.linker != ''
+        run: |
+          KEY="CARGO_TARGET_$(echo ${{ matrix.target }} | tr a-z- A-Z_)"
+          echo "${KEY}_LINKER=${{ matrix.linker }}" >> "$GITHUB_ENV"
+
+      - name: 缓存
+        uses: Swatinem/rust-cache@v2
+
+      - name: 构建
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: 准备标准版与 UPX 压缩版产物
+        run: |
+          cp target/${{ matrix.target }}/release/gd-iptv-panel ${{ matrix.artifact }}
+          chmod +x ${{ matrix.artifact }}
+          cp ${{ matrix.artifact }} ${{ matrix.artifact }}-upx
+          upx --best --lzma ${{ matrix.artifact }}-upx
+          ls -lh ${{ matrix.artifact }} ${{ matrix.artifact }}-upx
+
+      - name: 上传 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}
+            ${{ matrix.artifact }}-upx
+
+  release:
+    name: 创建 Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/') || inputs.tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 下载所有 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 计算 SHA256
+        run: |
+          cd dist
+          for f in gd-iptv-panel-*; do
+            sha256sum "$f" > "$f.sha256"
+          done
+          ls -lh
+
+      - name: 解析 Tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: ${{ steps.tag.outputs.name }}
+          generate_release_notes: true
+          files: |
+            dist/gd-iptv-panel-*
+          body: |
+            ## gd-iptv-panel ${{ steps.tag.outputs.name }}
+
+            广东电信 IPTV 播放列表 + 流式 EPG + 内置 RTSP/UDP 代理，路由器轻量静态二进制。
+
+            ### 📦 静态二进制（支持 ZXSLC SR6211 / OpenWrt / Linux）
+            - `gd-iptv-panel-linux-arm64` / `gd-iptv-panel-linux-arm64-upx` (ARMv8 / aarch64，适用于 ZXSLC SR6211 等 ARM64 路由器)
+            - `gd-iptv-panel-linux-amd64` / `gd-iptv-panel-linux-amd64-upx` (x86_64)
+            - `gd-iptv-panel-linux-armv7` / `gd-iptv-panel-linux-armv7-upx` (armv7 / armhf)
+
+            > 闪存紧张的路由器（如 `/UUPlugin` 仅 4.7 MB）推荐使用 `-upx` 版本。

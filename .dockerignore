@@ -1,0 +1,9 @@
+.git
+.github
+target
+data
+config.json
+logo-cache
+*.md
+install.sh
+docker-compose.yml

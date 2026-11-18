@@ -1,0 +1,8 @@
+/target/
+config.json
+config.json.tmp
+logo-cache/
+data/
+*.bak
+.DS_Store
+Thumbs.db

@@ -1,0 +1,48 @@
+[package]
+name = "gd-iptv-panel"
+version = "0.3.1"
+edition = "2021"
+description = "Lightweight Guangdong Telecom IPTV playlist, EPG & RTSP/UDP proxy panel for routers"
+
+[dependencies]
+anyhow = "1"
+bytes = "1"
+des = "0.8"
+ecb = { version = "0.1", features = ["alloc", "block-padding"] }
+futures-util = { version = "0.3", default-features = false }
+getrandom = "0.2"
+hex = "0.4"
+http = "1"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["http1", "server", "client"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+log = "0.4"
+md5 = "0.7"
+retina = { git = "https://github.com/yujincheng08/retina.git", branch = "iptv", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+socket2 = { version = "0.5", features = ["all"] }
+tokio = { version = "1", default-features = false, features = [
+    "rt",
+    "macros",
+    "net",
+    "sync",
+    "time",
+    "io-util",
+    "fs",
+    "signal",
+] }
+url = "2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(not(any(target_os = "android", target_os = "fuchsia", target_os = "linux")))'.dependencies]
+local-ip-address = "0.6"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+strip = "symbols"
+panic = "abort"
+codegen-units = 1

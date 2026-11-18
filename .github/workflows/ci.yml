@@ -1,0 +1,153 @@
+name: 🧪 CI 检查与烟雾测试
+
+on:
+  push:
+    branches: ['main', 'master']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test-and-lint:
+    name: 单元测试与 Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: 单元测试
+        run: cargo test -- --nocapture
+
+      - name: Clippy 静态检查
+        run: cargo clippy --all-targets -- -D warnings
+
+  build-and-smoke:
+    name: 构建静态二进制并测试 (${{ matrix.target }})
+    needs: test-and-lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            artifact: gd-iptv-panel-linux-amd64
+            linker: ''
+            pkg: musl-tools
+            smoke: true
+          - target: aarch64-unknown-linux-musl
+            artifact: gd-iptv-panel-linux-arm64
+            linker: aarch64-linux-gnu-gcc
+            pkg: gcc-aarch64-linux-gnu
+            smoke: false
+          - target: armv7-unknown-linux-musleabihf
+            artifact: gd-iptv-panel-linux-armv7
+            linker: arm-linux-gnueabihf-gcc
+            pkg: gcc-arm-linux-gnueabihf
+            smoke: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: 安装交叉编译工具链与 UPX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools upx-ucl ${{ matrix.pkg }}
+
+      - name: 配置 linker
+        if: matrix.linker != ''
+        run: |
+          KEY="CARGO_TARGET_$(echo ${{ matrix.target }} | tr a-z- A-Z_)"
+          echo "${KEY}_LINKER=${{ matrix.linker }}" >> "$GITHUB_ENV"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: 编译静态 release 二进制
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: 输出二进制大小、UPX 压缩体积与静态链接信息
+        run: |
+          BIN="target/${{ matrix.target }}/release/gd-iptv-panel"
+          UPX_BIN="target/${{ matrix.target }}/release/gd-iptv-panel-upx"
+          cp "$BIN" "$UPX_BIN"
+          upx --best --lzma "$UPX_BIN"
+          echo "=== 标准静态二进制 ==="
+          ls -lh "$BIN"
+          stat -c 'Raw Bytes: %s' "$BIN"
+          file "$BIN"
+          echo "=== UPX 压缩静态二进制（适合 4.7MB 路由器 NAND 分区） ==="
+          ls -lh "$UPX_BIN"
+          stat -c 'UPX Bytes: %s' "$UPX_BIN"
+
+      - name: 运行时烟雾测试与内存测量（含 UPX 与 pidfile 验证）
+        if: matrix.smoke
+        run: |
+          set -euo pipefail
+          for BIN in \
+            "target/${{ matrix.target }}/release/gd-iptv-panel" \
+            "target/${{ matrix.target }}/release/gd-iptv-panel-upx"; do
+            echo "========================================"
+            echo "Testing: $BIN"
+            "$BIN" --version
+            "$BIN" --help >/dev/null
+
+            WORKDIR="$(mktemp -d)"
+            "$BIN" -c "$WORKDIR/config.json" -b 127.0.0.1:14022 -d "$WORKDIR/logos" -p "$WORKDIR/panel.pid" &
+            PID=$!
+            sleep 1
+
+            # 校验 PID 文件
+            test "$(cat "$WORKDIR/panel.pid")" = "$PID"
+
+            echo "=== 进程资源占用 (idle) ==="
+            grep -E '^(Name|Threads|VmRSS|VmSize|VmData):' "/proc/$PID/status"
+
+            # 健康检查
+            "$BIN" --healthcheck 127.0.0.1:14022
+
+            # Web 首页
+            curl -fsS http://127.0.0.1:14022/ | grep -q "IPTV 配置中心"
+
+            # 未登录访问配置应返回 401
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:14022/api/config)
+            test "$CODE" -eq 401
+
+            # 登录并校验 API
+            TOKEN=$(curl -fsS -X POST http://127.0.0.1:14022/api/login \
+              -H 'Content-Type: application/json' \
+              -d '{"username":"admin","password":"admin"}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["token"])')
+            test -n "$TOKEN"
+
+            curl -fsS http://127.0.0.1:14022/api/auth-check -H "X-Auth-Token: $TOKEN" | grep -q '"ok":true'
+            curl -fsS http://127.0.0.1:14022/api/status -H "X-Auth-Token: $TOKEN" | grep -q '"version"'
+            CFG=$(curl -fsS http://127.0.0.1:14022/api/config -H "X-Auth-Token: $TOKEN")
+            echo "$CFG" | grep -q '"udp_proxy":true'
+
+            # 保存配置与清理图标缓存
+            curl -fsS -X POST http://127.0.0.1:14022/api/config \
+              -H "X-Auth-Token: $TOKEN" -H 'Content-Type: application/json' \
+              -d "$CFG" | grep -q '"ok":true'
+            curl -fsS -X POST http://127.0.0.1:14022/api/clear-logo-cache \
+              -H "X-Auth-Token: $TOKEN" | grep -q '"ok":true'
+
+            # 登出后原 Token 失效
+            curl -fsS -X POST http://127.0.0.1:14022/api/logout -H "X-Auth-Token: $TOKEN" | grep -q '"ok":true'
+            curl -fsS http://127.0.0.1:14022/api/auth-check -H "X-Auth-Token: $TOKEN" | grep -q '"ok":false'
+
+            echo "=== 进程资源占用 (after requests) ==="
+            grep -E '^(Name|Threads|VmRSS|VmSize|VmData):' "/proc/$PID/status"
+
+            # 优雅退出并验证 PID 文件已自动清理
+            kill -TERM "$PID"
+            wait "$PID"
+            test ! -e "$WORKDIR/panel.pid"
+            rm -rf "$WORKDIR"
+          done
+          echo "✅ 标准版与 UPX 版烟雾测试全部通过"
