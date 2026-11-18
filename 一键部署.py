@@ -149,7 +149,7 @@ class TelnetClient:
             self.sock = None
 
 def get_router_host() -> str:
-    """获取目标路由器 IP：优先 CLI 参数 -> 环境变量 -> 交互输入 (默认 192.168.1.2)"""
+    """获取目标路由器 IP：优先 CLI 参数 -> 环境变量 -> 交互输入 (默认 192.168.5.1)"""
     if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
         return sys.argv[1].strip()
     env_val = os.environ.get("ROUTER_HOST", "").strip()
@@ -215,7 +215,7 @@ def get_local_lan_ip(target_ip: str) -> str:
     print(f"\n[!] 提示: 无法自动侦测本机与路由器 ({target_ip}) 通信的局域网 IP。")
     while True:
         try:
-            user_ip = input(">>> 请手动输入本机在路由器局域网中的 IP 地址 (例如 192.168.1.X): ").strip()
+            user_ip = input(">>> 请手动输入本机在路由器局域网中的 IP 地址 (例如 192.168.5.1): ").strip()
             parts = user_ip.split(".")
             if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
                 return user_ip
