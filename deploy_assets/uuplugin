@@ -1,7 +1,7 @@
 #!/bin/sh
 # gd-iptv-panel launcher & watchdog for ZTE router
 
-mkdir -p /tmp/gd-iptv-panel/logo-cache
+mkdir -p /tmp/gd-iptv-panel
 
 # 自动挂载前端 4th Tab 独立开关
 if [ -f /UUPlugin/index_patched.html ]; then
@@ -15,7 +15,6 @@ start_panel() {
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting gd-iptv-panel..." >> /tmp/gd-iptv-panel/watchdog.log
         RUST_LOG=info /UUPlugin/gd-iptv-panel \
             -c /UUPlugin/config.json \
-            -d /tmp/gd-iptv-panel/logo-cache \
             -p /tmp/gd-iptv-panel/panel.pid >> /tmp/gd-iptv-panel/panel.log 2>&1 &
     fi
 }

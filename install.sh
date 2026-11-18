@@ -238,9 +238,9 @@ STOP=10
 USE_PROCD=1
 
 start_service() {
-    mkdir -p "${CONFIG_DIR}" "${CACHE_DIR}"
+    mkdir -p "${CONFIG_DIR}"
     procd_open_instance
-    procd_set_param command "${INSTALL_PATH}" -c "${CONFIG_FILE}" -d "${CACHE_DIR}"
+    procd_set_param command "${INSTALL_PATH}" -c "${CONFIG_FILE}"
     procd_set_param env RUST_LOG=info,hyper=warn,retina=warn
     procd_set_param respawn 3600 5 5
     procd_set_param stdout 1
@@ -262,7 +262,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=${INSTALL_PATH} -c ${CONFIG_FILE} -d ${CACHE_DIR}
+ExecStart=${INSTALL_PATH} -c ${CONFIG_FILE}
 Restart=on-failure
 RestartSec=5
 Environment=RUST_LOG=info,hyper=warn,retina=warn

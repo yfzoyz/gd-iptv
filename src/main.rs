@@ -18,7 +18,7 @@ use hyper::body::{Body, Frame, Incoming, SizeHint};
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper_util::rt::{TokioIo, TokioTimer};
-use iptv::{get_channels, get_icon, stream_xmltv, BaseUrlCache};
+use iptv::{get_channels, stream_xmltv, BaseUrlCache};
 use log::{debug, error, info, warn};
 use m3u::PlaylistOptions;
 use serde::{Deserialize, Serialize};
@@ -121,7 +121,6 @@ struct AppState {
     config: RwLock<Config>,
     config_path: PathBuf,
     tokens: TokenStore,
-    logo_cache_dir: PathBuf,
     base_url_cache: BaseUrlCache,
 }
 
@@ -141,7 +140,6 @@ impl AppState {
 struct CliArgs {
     config: PathBuf,
     bind: Option<String>,
-    cache_dir: Option<PathBuf>,
     pidfile: Option<PathBuf>,
     healthcheck: Option<String>,
 }
@@ -153,7 +151,6 @@ fn print_help() {
          选项:\n  \
            -c, --config <PATH>      配置文件路径 [默认: $IPTV_CONFIG 或 ./config.json]\n  \
            -b, --bind <ADDR>        监听地址（覆盖配置文件，例如 0.0.0.0:4022）\n  \
-           -d, --cache-dir <DIR>    Logo 缓存目录（路由器建议设为 /tmp/... 减少闪存写入）\n  \
            -p, --pidfile <PATH>     PID 文件路径（便于 BusyBox 等无 systemd 路由器管理进程）\n  \
                --healthcheck [ADDR] 健康检查（用于 Docker scratch 容器，默认 127.0.0.1:4022）\n  \
            -V, --version            显示版本\n  \
@@ -164,7 +161,6 @@ fn print_help() {
 fn parse_args() -> CliArgs {
     let mut config = default_config_path();
     let mut bind = None;
-    let mut cache_dir = None;
     let mut pidfile = None;
     let mut healthcheck = None;
 
@@ -193,13 +189,6 @@ fn parse_args() -> CliArgs {
                 };
                 bind = Some(val);
             }
-            "-d" | "--cache-dir" => {
-                let Some(val) = args.next() else {
-                    eprintln!("参数 {arg} 缺少值");
-                    std::process::exit(2);
-                };
-                cache_dir = Some(PathBuf::from(val));
-            }
             "-p" | "--pidfile" => {
                 let Some(val) = args.next() else {
                     eprintln!("参数 {arg} 缺少值");
@@ -221,7 +210,6 @@ fn parse_args() -> CliArgs {
     CliArgs {
         config,
         bind,
-        cache_dir,
         pidfile,
         healthcheck,
     }
@@ -329,18 +317,55 @@ async fn handle_request(
             .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .header(header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, OPTIONS")
             .header(header::ACCESS_CONTROL_ALLOW_HEADERS, "*")
+            .header("Access-Control-Allow-Private-Network", "true")
             .body(RespBody::Full(Full::new(Bytes::new())))
             .unwrap());
     }
 
     let cfg = state.cfg_snapshot();
 
-    // 插件关闭拦截：关闭后，除了管理接口与面板首页外，阻断所有播放列表与流媒体代理
+    // 插件关闭拦截：关闭后，阻断所有播放列表与流媒体代理；首页返回友好的停用说明
     if !cfg.enabled {
-        let is_mgmt = path == "/"
-            || path.starts_with("/api/")
+        let is_state_query = path == "/api/plugin/state"
+            || path == "/api/plugin/enable"
             || path == "/favicon.ico";
-        if !is_mgmt {
+        if !is_state_query {
+            if path == "/" || path == "/index.html" {
+                let disabled_html = r#"<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IPTV 插件已停用</title>
+<style>
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f5f7fa;display:flex;align-items:center;justify-content:center;min-height:100vh;color:#303133;}
+  .card{background:#fff;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,0.06);padding:40px 32px;max-width:460px;width:90%;text-align:center;}
+  .icon{width:56px;height:56px;border-radius:50%;background:#f4f4f5;color:#909399;display:inline-flex;align-items:center;justify-content:center;margin:0 auto 20px;}
+  h2{margin:0 0 12px;font-size:20px;color:#303133;}
+  p{margin:0 0 20px;font-size:14px;line-height:1.6;color:#606266;}
+  .badge{display:inline-block;padding:4px 12px;background:#fef0f0;color:#f56c6c;border-radius:20px;font-size:13px;font-weight:500;margin-bottom:16px;}
+  .footer{font-size:12px;color:#909399;margin-top:24px;border-top:1px solid #ebeef5;padding-top:16px;}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
+  </div>
+  <div class="badge">已在路由器后台关闭</div>
+  <h2>IPTV 插件当前处于停用状态</h2>
+  <p>您已在路由器管理后台「应用 → 插件 → IPTV插件」关闭了此插件。<br>在此状态下，已自动暂停播放列表、EPG 以及组播/RTSP 串流代理服务，以释放系统内存与带宽。</p>
+  <div class="footer">如需使用，请前往路由器管理后台开启开关并点击「提交」。</div>
+</div>
+</body>
+</html>"#;
+                return Ok(Response::builder()
+                    .status(StatusCode::SERVICE_UNAVAILABLE)
+                    .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+                    .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                    .body(RespBody::Full(Full::new(Bytes::from_static(disabled_html.as_bytes()))))
+                    .unwrap());
+            }
             return Ok(resp_text(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "IPTV 插件当前处于关闭状态。如需使用，请前往路由器管理后台「应用 → 插件 → IPTV插件」开启并点击提交。",
@@ -495,7 +520,6 @@ async fn handle_request(
                 return Ok(resp_text(StatusCode::UNAUTHORIZED, "Unauthorized"));
             }
             let cfg = state.cfg_snapshot();
-            let logo_count = count_logo_files(&state.logo_cache_dir).await;
             resp_json(
                 StatusCode::OK,
                 &serde_json::json!({
@@ -503,8 +527,6 @@ async fn handle_request(
                     "version": VERSION,
                     "groups": m3u::all_groups(),
                     "config_path": state.config_path.display().to_string(),
-                    "logo_cache_dir": state.logo_cache_dir.display().to_string(),
-                    "logo_cache_count": logo_count,
                     "bind": cfg.bind,
                 }),
             )
@@ -536,34 +558,6 @@ async fn handle_request(
             }
         }
 
-        // API: 清理 logo 缓存
-        (Method::POST, "/api/clear-logo-cache") => {
-            if !require_auth(&state, &req) {
-                return Ok(resp_text(StatusCode::UNAUTHORIZED, "Unauthorized"));
-            }
-            let dir = &state.logo_cache_dir;
-            match tokio::fs::remove_dir_all(dir).await {
-                Ok(_) => resp_json(
-                    StatusCode::OK,
-                    &serde_json::json!({
-                        "ok": true,
-                        "message": format!("已清空图标缓存：{}", dir.display())
-                    }),
-                ),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => resp_json(
-                    StatusCode::OK,
-                    &serde_json::json!({
-                        "ok": true,
-                        "message": "图标缓存已为空"
-                    }),
-                ),
-                Err(e) => resp_json(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    &serde_json::json!({ "ok": false, "error": e.to_string() }),
-                ),
-            }
-        }
-
         // M3U 播放列表
         (Method::GET, "/playlist") => {
             let cfg = state.cfg_snapshot();
@@ -579,7 +573,6 @@ async fn handle_request(
                             include_top: cfg.output.enable_top_channels,
                             include_catchup: cfg.proxy.include_catchup,
                             include_xmltv_header: cfg.output.enable_xmltv,
-                            include_logo: cfg.output.enable_logo,
                             playseek_template: &cfg.proxy.playseek_template,
                             scheme: &scheme,
                             host: &host,
@@ -605,24 +598,6 @@ async fn handle_request(
             match stream_xmltv(&cfg, &state.base_url_cache, &scheme, &host).await {
                 Ok(rx) => resp_stream("text/xml; charset=utf-8", rx),
                 Err(e) => resp_text(StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")),
-            }
-        }
-
-        // 动态前缀路由：/logo/{id}.png, /rtsp/{tail}, /rtp/{addr}
-        (Method::GET, p) if p.starts_with("/logo/") && p.ends_with(".png") => {
-            let cfg = state.cfg_snapshot();
-            if !cfg.output.enable_logo {
-                return Ok(resp_text(StatusCode::NOT_FOUND, "logo disabled"));
-            }
-            let id = &p["/logo/".len()..p.len() - ".png".len()];
-            match get_icon(&cfg, id, &state.logo_cache_dir, &state.base_url_cache).await {
-                Ok(icon) => Response::builder()
-                    .status(StatusCode::OK)
-                    .header(header::CONTENT_TYPE, "image/png")
-                    .header(header::CACHE_CONTROL, "public, max-age=86400")
-                    .body(RespBody::Full(Full::new(Bytes::from(icon))))
-                    .unwrap(),
-                Err(e) => resp_text(StatusCode::NOT_FOUND, format!("Error: {e}")),
             }
         }
 
@@ -667,23 +642,6 @@ async fn handle_request(
     Ok(resp)
 }
 
-async fn count_logo_files(dir: &std::path::Path) -> usize {
-    let Ok(mut rd) = tokio::fs::read_dir(dir).await else {
-        return 0;
-    };
-    let mut count = 0usize;
-    while let Ok(Some(entry)) = rd.next_entry().await {
-        if entry
-            .file_name()
-            .to_str()
-            .is_some_and(|n| n.ends_with(".png"))
-        {
-            count += 1;
-        }
-    }
-    count
-}
-
 // =========================
 // 入口（单线程 Tokio 运行时，最小化路由器线程与内存占用）
 // =========================
@@ -706,23 +664,6 @@ fn main() -> std::io::Result<()> {
     rt.block_on(async_main(args))
 }
 
-fn default_logo_cache_dir(config_path: &std::path::Path) -> PathBuf {
-    let raw = config_path.to_string_lossy();
-    // 若配置位于路由器小容量 NAND 分区（如中兴 /UUPlugin、/status、/usercfg），默认将图标缓存放 tmpfs 零磨损
-    if raw.starts_with("/UUPlugin/")
-        || raw.starts_with("/status/")
-        || raw.starts_with("/usercfg/")
-    {
-        return PathBuf::from("/tmp/gd-iptv-panel/logo-cache");
-    }
-    config_path
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("logo-cache")
-}
-
 struct PidFileGuard(Option<PathBuf>);
 
 impl Drop for PidFileGuard {
@@ -742,10 +683,6 @@ async fn async_main(args: CliArgs) -> std::io::Result<()> {
         cfg.bind = bind;
     }
 
-    let logo_cache_dir = args
-        .cache_dir
-        .unwrap_or_else(|| default_logo_cache_dir(&config_path));
-
     let pid_guard = if let Some(ref pf) = args.pidfile {
         if let Some(parent) = pf.parent().filter(|p| !p.as_os_str().is_empty()) {
             let _ = std::fs::create_dir_all(parent);
@@ -763,15 +700,6 @@ async fn async_main(args: CliArgs) -> std::io::Result<()> {
     info!("gd-iptv-panel v{}", VERSION);
     info!("配置文件：{}", config_path.display());
     info!("监听地址：{}", bind);
-    info!("图标缓存：{}", logo_cache_dir.display());
-
-    if let Err(e) = std::fs::create_dir_all(&logo_cache_dir) {
-        warn!(
-            "无法预创建图标缓存目录 {}：{}（运行时按需重试）",
-            logo_cache_dir.display(),
-            e
-        );
-    }
 
     let listen_addr: SocketAddr = bind
         .parse()
@@ -782,7 +710,6 @@ async fn async_main(args: CliArgs) -> std::io::Result<()> {
         config: RwLock::new(cfg),
         config_path,
         tokens: TokenStore::new(),
-        logo_cache_dir,
         base_url_cache: BaseUrlCache::new(),
     });
 

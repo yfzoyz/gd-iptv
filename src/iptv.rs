@@ -11,7 +11,6 @@ use log::{debug, info, warn};
 use serde::Deserialize;
 use std::{
     collections::HashMap,
-    path::Path,
     sync::{Arc, Mutex},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -22,12 +21,10 @@ const HTTP_TIMEOUT: Duration = Duration::from_secs(6);
 const BASE_URL_TTL: Duration = Duration::from_secs(30 * 60);
 const MAX_CHANNEL_LIST_BYTES: usize = 4 * 1024 * 1024;
 const MAX_EPG_BYTES: usize = 1024 * 1024;
-const MAX_LOGO_BYTES: usize = 256 * 1024;
-const MAX_LOGO_CACHE_FILES: usize = 300;
 const EPG_CONCURRENCY: usize = 6;
 
 // =========================
-// base_url 缓存（避免 /logo 请求反复打 eds.iptv.gd.cn）
+// base_url 缓存（避免频繁请求 eds.iptv.gd.cn）
 // =========================
 
 struct CachedBaseUrl {
@@ -446,99 +443,6 @@ pub(crate) async fn stream_xmltv(
     });
 
     Ok(rx)
-}
-
-// =========================
-// 频道图标（磁盘缓存 + base_url 缓存 + 原子落盘）
-// =========================
-
-pub(crate) async fn get_icon(
-    cfg: &Config,
-    id: &str,
-    cache_dir: &Path,
-    cache: &BaseUrlCache,
-) -> Result<Vec<u8>> {
-    if id.is_empty() || id.len() > 24 || !id.bytes().all(|b| b.is_ascii_digit()) {
-        return Err(anyhow!("invalid channel id: {}", id));
-    }
-
-    let cache_path = cache_dir.join(format!("{}.png", id));
-
-    // 1. 命中磁盘缓存
-    if let Ok(bytes) = tokio::fs::read(&cache_path).await {
-        if !bytes.is_empty() {
-            debug!("logo cache hit: {} ({} bytes)", id, bytes.len());
-            return Ok(bytes);
-        }
-        warn!("logo cache 为空文件，重新拉取: {}", cache_path.display());
-    }
-
-    // 2. 未命中，拉上游（复用缓存的 base_url）
-    cfg.validate()?;
-    let mut session = HttpSession::new(cfg.iptv.interface.clone(), HTTP_TIMEOUT);
-    let base_url = get_base_url_cached(&mut session, cfg, cache).await?;
-
-    let url = Url::parse(&format!(
-        "{base_url}/EPG/jsp/iptvsnmv3/en/list/images/channelIcon/{id}.png"
-    ))?;
-
-    let bytes = match session.get_bytes(&url, MAX_LOGO_BYTES).await {
-        Ok(b) => b.to_vec(),
-        Err(first_err) => {
-            // 若缓存的 base_url 失效，刷新一次重试
-            cache.invalidate();
-            let fresh_base = get_base_url_cached(&mut session, cfg, cache).await?;
-            if fresh_base != base_url {
-                let retry_url = Url::parse(&format!(
-                    "{fresh_base}/EPG/jsp/iptvsnmv3/en/list/images/channelIcon/{id}.png"
-                ))?;
-                session.get_bytes(&retry_url, MAX_LOGO_BYTES).await?.to_vec()
-            } else {
-                return Err(first_err);
-            }
-        }
-    };
-
-    if bytes.is_empty() {
-        warn!("上游返回空 logo: {}", id);
-        return Ok(bytes);
-    }
-
-    // 3. 原子落盘（受文件数上限保护，避免撑爆路由器 tmpfs；失败不影响本次返回）
-    if let Err(e) = tokio::fs::create_dir_all(cache_dir).await {
-        warn!("创建 logo 缓存目录失败 {}: {}", cache_dir.display(), e);
-    } else if !cache_dir_at_limit(cache_dir).await {
-        let tmp_path = cache_dir.join(format!("{}.{}.tmp", id, random_nonce()));
-        match tokio::fs::write(&tmp_path, &bytes).await {
-            Ok(_) => {
-                if let Err(e) = tokio::fs::rename(&tmp_path, &cache_path).await {
-                    let _ = tokio::fs::remove_file(&tmp_path).await;
-                    warn!("重命名 logo 缓存失败 {}: {}", cache_path.display(), e);
-                } else {
-                    debug!("logo cached: {} ({} bytes)", id, bytes.len());
-                }
-            }
-            Err(e) => {
-                warn!("写入 logo 临时文件失败 {}: {}", tmp_path.display(), e);
-            }
-        }
-    }
-
-    Ok(bytes)
-}
-
-async fn cache_dir_at_limit(dir: &Path) -> bool {
-    let Ok(mut rd) = tokio::fs::read_dir(dir).await else {
-        return false;
-    };
-    let mut count = 0usize;
-    while let Ok(Some(_)) = rd.next_entry().await {
-        count += 1;
-        if count >= MAX_LOGO_CACHE_FILES {
-            return true;
-        }
-    }
-    false
 }
 
 #[cfg(test)]

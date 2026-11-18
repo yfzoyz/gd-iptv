@@ -18,7 +18,6 @@ pub struct PlaylistOptions<'a> {
     pub include_top: bool,
     pub include_catchup: bool,
     pub include_xmltv_header: bool,
-    pub include_logo: bool,
     pub playseek_template: &'a str,
     pub scheme: &'a str,
     pub host: &'a str,
@@ -168,14 +167,6 @@ fn write_group(out: &mut String, chs: &[Channel], group_override: &str, opts: &P
         );
     }
 
-    if opts.include_logo {
-        let _ = write!(
-            out,
-            r#" tvg-logo="{}://{}/logo/{}.png""#,
-            opts.scheme, opts.host, best.id
-        );
-    }
-
     let _ = writeln!(out, r#" group-title="{}",{}"#, group_override, display_name);
 
     for ch in chs {
@@ -284,7 +275,7 @@ mod tests {
     }
 
     #[test]
-    fn test_playlist_header_logo_and_top() {
+    fn test_playlist_header_and_top() {
         let channels = vec![
             mk_ch(1, "CCTV-11高清", "http://host/rtp/239.0.0.1:1000"),
             mk_ch(2, "CCTV-11戏曲", "http://host/rtp/239.0.0.2:1000"),
@@ -294,7 +285,6 @@ mod tests {
             include_top: true,
             include_catchup: false,
             include_xmltv_header: true,
-            include_logo: false,
             playseek_template: "",
             scheme: "http",
             host: "192.168.1.1:4022",

@@ -21,7 +21,6 @@
   "output": {
     "enable_playlist": true,
     "enable_xmltv": true,
-    "enable_logo": true,
     "enable_top_channels": true
   }
 }

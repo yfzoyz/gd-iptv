@@ -234,7 +234,6 @@ h1 .logo-icon{width:22px;height:22px;stroke:var(--primary);fill:none;stroke-widt
     <div class="check-row">
       <label><input type="checkbox" id="enable_playlist"> 生成播放列表 (M3U)</label>
       <label><input type="checkbox" id="enable_xmltv"> 生成 EPG (XMLTV 电子节目单)</label>
-      <label><input type="checkbox" id="enable_logo"> 频道台标 (按需代理缓存，适配电视端大屏)</label>
       <label><input type="checkbox" id="enable_top_channels"> 置顶频道副本 (CCTV、广东卫视优先置顶)</label>
     </div>
   </div>
@@ -336,7 +335,6 @@ function fillConfig(c){
   if(c.output){
     $('enable_playlist').checked=c.output.enable_playlist!==false;
     $('enable_xmltv').checked=c.output.enable_xmltv!==false;
-    $('enable_logo').checked=c.output.enable_logo!==false;
     $('enable_top_channels').checked=c.output.enable_top_channels!==false;
   }
 }
@@ -354,7 +352,7 @@ function collectConfig(){
     },
     output:{
       enable_playlist:$('enable_playlist').checked,enable_xmltv:$('enable_xmltv').checked,
-      enable_logo:$('enable_logo').checked,enable_top_channels:$('enable_top_channels').checked,
+      enable_top_channels:$('enable_top_channels').checked,
     },
   };
 }

@@ -40,7 +40,7 @@ curl -fsSL https://raw.githubusercontent.com/yfzoyz/gd-iptv/main/install.sh | sh
 ./install.sh uninstall   # 卸载
 ```
 
-> 在 OpenWrt 上，脚本会自动生成 `/etc/init.d/gd-iptv-panel`（procd），并将图标缓存指向 `/tmp/gd-iptv-panel/logo-cache`（内存盘），避免写入路由器闪存。
+> 在 OpenWrt 上，脚本会自动生成 `/etc/init.d/gd-iptv-panel`（procd），并将日志指向 `/tmp`（内存盘），避免频繁写入路由器闪存。
 
 ### 方式 B：ZXSLC SR6211 / 中兴 AX5400 Pro+ 路由器（ARM64 / Linux 4.1.25 / 一键自动化）
 
@@ -50,31 +50,19 @@ curl -fsSL https://raw.githubusercontent.com/yfzoyz/gd-iptv/main/install.sh | sh
    在电脑端直接双击运行 `一键部署.bat`（或 `python 一键部署.py`），脚本将自动完成：
    - 检查 Telnet 连通性并自动完成局域网极速文件下发；
    - 固化程序至 `/UUPlugin/` 分区（仅占 545 KB，剩余 >4MB）；
-   - 内存盘零磨损架构：日志与台标缓存全部分流在 `/tmp`；
-   - **原厂后台独立选项卡与开关**：自动在路由器后台（`http://192.168.1.2/#/app/application`）挂载独立的「广东 IPTV」选项卡与独立控制开关，且**完全独立，绝不影响网易 UU 插件、玩辰插件、节点小宝三个原厂开关**；
+   - 内存盘零磨损架构：日志与运行临时文件全部分流在 `/tmp`；
+   - **原厂后台独立选项卡与开关**：自动在路由器后台（`http://192.168.5.1/#/app/application`）挂载独立的「IPTV插件」选项卡与独立控制开关，且**完全独立，绝不影响网易 UU 插件、玩辰插件、节点小宝三个原厂开关**；
    - 固化冷启动自启机制，路由器重启断电自动恢复；
    - 自动化端到端健康检查并打印订阅地址。
 
 2. **路由器强制还原/恢复出厂设置后的恢复流程**：
-   - 第一步：打开浏览器登录路由器后台 `http://192.168.1.2`，在「系统管理」->「备份与恢复」->「恢复配置」中上传 `AX5400 Pro+\解锁Telnet-config.bin` 激活 Telnet；
+   - 第一步：打开浏览器登录路由器后台（出厂默认 `http://192.168.5.1`），在「系统管理」->「备份与恢复」->「恢复配置」中上传 `AX5400 Pro+\解锁Telnet-config.bin` 激活 Telnet；
    - 第二步：重启完成后，双击电脑上的 `一键部署.bat`，即可一键全自动恢复全部 IPTV 服务！
 
 ---
-  -d /tmp/gd-iptv-panel/logo-cache \
-  -p /tmp/gd-iptv-panel/gd-iptv-panel.pid >/tmp/gd-iptv-panel/gd-iptv-panel.log 2>&1 &
-```
-
-> 也可以直接运行 `install.sh`，脚本会自动识别 `/UUPlugin` / `/status`、兼容 BusyBox v1.17.2，并生成 `/UUPlugin/gd-iptv-panel/service.sh` 启停管理脚本。
-
-### 方式 C：OpenWrt 手动运行
 
 ```sh
-# 1. 按架构下载二进制（amd64 / arm64 / armv7）
-wget -O /usr/bin/gd-iptv-panel https://github.com/yfzoyz/gd-iptv/releases/latest/download/gd-iptv-panel-linux-arm64
-chmod +x /usr/bin/gd-iptv-panel
-
-# 2. 前台试运行（首次自动生成配置文件）
-/usr/bin/gd-iptv-panel -c /etc/gd-iptv-panel/config.json -d /tmp/gd-iptv-panel/logo-cache
+/usr/bin/gd-iptv-panel -c /etc/gd-iptv-panel/config.json
 ```
 
 ### 方式 D：Docker（基于 `scratch` 极简镜像）
@@ -112,7 +100,6 @@ gd-iptv-panel [选项]
 
   -c, --config <PATH>      配置文件路径 [默认: $IPTV_CONFIG 或 ./config.json]
   -b, --bind <ADDR>        监听地址（覆盖配置文件）
-  -d, --cache-dir <DIR>    Logo 缓存目录（路由器建议 /tmp/...）
   -p, --pidfile <PATH>     PID 文件路径（适用于无 systemd 的嵌入式路由器）
       --healthcheck [ADDR] 健康检查（用于 Docker 容器）
   -V, --version            显示版本
@@ -125,18 +112,19 @@ gd-iptv-panel [选项]
 
 | 方法 | 路径 | 认证 | 说明 |
 |---|---|---|---|
-| GET | `/` | ❌ | Web 配置面板 |
+| GET | `/` | ❌ | Web 配置面板（插件关闭时显示停用提示） |
 | POST | `/api/login` | ❌ | 登录获取 Token |
 | POST | `/api/logout` | ✅ | 注销当前 Token |
 | GET | `/api/auth-check` | ❌ | 校验 Token |
 | GET | `/api/config` | ✅ | 读取配置 |
 | POST | `/api/config` | ✅ | 保存配置 |
-| GET | `/api/status` | ✅ | 服务状态与缓存统计 |
+| GET | `/api/status` | ✅ | 服务状态与基础统计 |
 | POST | `/api/test` | ✅ | 测试 IPTV 认证并返回频道数 |
-| POST | `/api/clear-logo-cache` | ✅ | 清空图标缓存 |
+| GET | `/api/plugin/state` | ❌ | 供路由器原生管理页查询开关状态 |
+| POST | `/api/plugin/enable`| ❌ | 供路由器原生管理页提交开启 |
+| POST | `/api/plugin/disable`| ❌ | 供路由器原生管理页提交关闭 |
 | GET | `/playlist` | ❌ | M3U 播放列表 |
 | GET | `/xmltv` | ❌ | 流式 XMLTV EPG |
-| GET | `/logo/{id}.png` | ❌ | 频道图标（磁盘缓存） |
 | GET | `/rtsp/{tail}` | ❌ | RTSP 直播/回看代理 |
 | GET | `/rtp/{addr}` | ❌ | UDP 组播代理 |
 

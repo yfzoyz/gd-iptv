@@ -80,9 +80,9 @@ pub struct OutputConfig {
     #[serde(default = "default_true")]
     pub enable_xmltv: bool,
     #[serde(default = "default_true")]
-    pub enable_logo: bool,
-    #[serde(default = "default_true")]
     pub enable_top_channels: bool,
+    #[serde(default, skip_serializing)]
+    pub enable_logo: Option<bool>,
 }
 
 impl Default for OutputConfig {
@@ -90,8 +90,8 @@ impl Default for OutputConfig {
         Self {
             enable_playlist: true,
             enable_xmltv: true,
-            enable_logo: true,
             enable_top_channels: true,
+            enable_logo: None,
         }
     }
 }

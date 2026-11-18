@@ -6,3 +6,5 @@ data/
 *.bak
 .DS_Store
 Thumbs.db
+__pycache__/
+deploy_assets/gd-iptv-panel
