@@ -85,6 +85,9 @@ fn resp_bytes(status: StatusCode, content_type: &str, body: impl Into<Bytes>) ->
     Response::builder()
         .status(status)
         .header(header::CONTENT_TYPE, content_type)
+        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, OPTIONS")
+        .header(header::ACCESS_CONTROL_ALLOW_HEADERS, "*")
         .body(RespBody::Full(Full::new(body.into())))
         .unwrap()
 }
@@ -103,6 +106,9 @@ fn resp_stream(content_type: &str, rx: mpsc::Receiver<Bytes>) -> Response<RespBo
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, content_type)
         .header(header::CACHE_CONTROL, "no-store")
+        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, OPTIONS")
+        .header(header::ACCESS_CONTROL_ALLOW_HEADERS, "*")
         .body(RespBody::Stream(rx))
         .unwrap()
 }
@@ -316,12 +322,68 @@ async fn handle_request(
     let path = req.uri().path().to_string();
     let query = req.uri().query().map(str::to_string);
 
+    // 跨域预检处理
+    if method == Method::OPTIONS {
+        return Ok(Response::builder()
+            .status(StatusCode::NO_CONTENT)
+            .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, OPTIONS")
+            .header(header::ACCESS_CONTROL_ALLOW_HEADERS, "*")
+            .body(RespBody::Full(Full::new(Bytes::new())))
+            .unwrap());
+    }
+
+    let cfg = state.cfg_snapshot();
+
+    // 插件关闭拦截：关闭后，除了管理接口与面板首页外，阻断所有播放列表与流媒体代理
+    if !cfg.enabled {
+        let is_mgmt = path == "/"
+            || path.starts_with("/api/")
+            || path == "/favicon.ico";
+        if !is_mgmt {
+            return Ok(resp_text(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "IPTV 插件当前处于关闭状态。如需使用，请前往路由器管理后台「应用 → 插件 → IPTV插件」开启并点击提交。",
+            ));
+        }
+    }
+
     let resp = match (method, path.as_str()) {
+        // API: 插件状态查询 (供路由器管理页 1:1 开关同步状态)
+        (Method::GET, "/api/plugin/state") => {
+            resp_json(StatusCode::OK, &serde_json::json!({
+                "ok": true,
+                "enabled": cfg.enabled,
+                "version": VERSION
+            }))
+        }
+
+        // API: 开启插件 (供路由器前端 1:1 开关提交时调用)
+        (Method::POST, "/api/plugin/enable") => {
+            let mut new_cfg = cfg.clone();
+            new_cfg.enabled = true;
+            let _ = new_cfg.save(&state.config_path);
+            *state.config.write().unwrap_or_else(|e| e.into_inner()) = new_cfg;
+            info!("[IPTV-Plugin] IPTV 插件已被路由器前端开启");
+            resp_json(StatusCode::OK, &serde_json::json!({ "ok": true, "enabled": true }))
+        }
+
+        // API: 关闭插件 (供路由器前端 1:1 开关提交时调用)
+        (Method::POST, "/api/plugin/disable") => {
+            let mut new_cfg = cfg.clone();
+            new_cfg.enabled = false;
+            let _ = new_cfg.save(&state.config_path);
+            *state.config.write().unwrap_or_else(|e| e.into_inner()) = new_cfg;
+            warn!("[IPTV-Plugin] IPTV 插件已被路由器前端关闭，停止所有播放流");
+            resp_json(StatusCode::OK, &serde_json::json!({ "ok": true, "enabled": false }))
+        }
+
         // 静态面板
         (Method::GET, "/") => Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
             .header(header::CACHE_CONTROL, "no-cache")
+            .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .body(RespBody::Full(Full::new(Bytes::from_static(
                 INDEX_HTML.as_bytes(),
             ))))

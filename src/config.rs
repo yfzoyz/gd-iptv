@@ -4,6 +4,9 @@ use std::path::{Path, PathBuf};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Config {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
     #[serde(default = "default_bind")]
     pub bind: String,
 
@@ -186,6 +189,7 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            enabled: true,
             bind: default_bind(),
             admin_user: default_admin_user(),
             admin_pass: default_admin_pass(),
