@@ -1,13 +1,18 @@
 (function() {
-  var currentHost = window.location.hostname || '192.168.1.2';
-  var iptvBaseUrl = 'http://' + currentHost + ':4022';
+  function getIptvUrl(path) {
+    var proto = window.location.protocol || 'http:';
+    var host = window.location.hostname || (window.location.host ? window.location.host.split(':')[0] : '');
+    var base = proto + '//' + host + ':4022';
+    return path ? (base + path) : base;
+  }
+
   var committed = (localStorage.getItem('iptv_plugin_state') !== '0');
   var pending = committed;
 
   // Sync state from backend if reachable
   function syncBackendState() {
     try {
-      fetch(iptvBaseUrl + '/api/plugin/state', { mode: 'cors' })
+      fetch(getIptvUrl('/api/plugin/state'), { mode: 'cors' })
         .then(function(r) { return r.json(); })
         .then(function(d) {
           if (typeof d.enabled === 'boolean') {
@@ -102,7 +107,7 @@
       '        <div class="el-alert__content" style="padding: 0;">',
       '          <p class="el-alert__description" style="margin: 0; line-height: 1.5;">',
       '            <span style="color: #222; font-size: 13px;">首次打开插件，请点击链接：</span>',
-      '            <a id="iptv-entry-link" href="' + iptvBaseUrl + '" target="_blank" class="text-blue text-href" style="color: #04affa; text-decoration: underline; margin: 0 4px; font-size: 13px; font-weight: 500;">IPTV插件</a>',
+      '            <a id="iptv-entry-link" href="' + getIptvUrl() + '" target="_blank" class="text-blue text-href" style="color: #04affa; text-decoration: underline; margin: 0 4px; font-size: 13px; font-weight: 500;">IPTV插件</a>',
       '            <span style="color: #222; font-size: 13px;">进入IPTV插件设置页面。</span>',
       '          </p>',
       '        </div>',
@@ -129,6 +134,17 @@
 
     content.appendChild(iptvPane);
 
+    // Make entry link 100% adaptive on hover/click
+    var entryLink = document.getElementById('iptv-entry-link');
+    if (entryLink) {
+      entryLink.addEventListener('mouseenter', function() {
+        this.href = getIptvUrl();
+      });
+      entryLink.addEventListener('click', function() {
+        this.href = getIptvUrl();
+      });
+    }
+
     // Initial render & sync
     pending = committed;
     renderSwitch(committed);
@@ -152,10 +168,10 @@
         committed = pending;
         localStorage.setItem('iptv_plugin_state', committed ? '1' : '0');
 
-        // Notify backend service
+        // Notify backend service adaptively
         try {
           var targetAction = committed ? 'enable' : 'disable';
-          fetch(iptvBaseUrl + '/api/plugin/' + targetAction, { method: 'POST', mode: 'cors' }).catch(function(){});
+          fetch(getIptvUrl('/api/plugin/' + targetAction), { method: 'POST', mode: 'cors' }).catch(function(){});
         } catch(ex) {}
 
         // Show success notification card
@@ -190,6 +206,11 @@
       // Discard unsubmitted switch toggles on tab activate
       pending = committed;
       renderSwitch(committed);
+
+      // Re-sync link href dynamically
+      if (entryLink) {
+        entryLink.href = getIptvUrl();
+      }
 
       // Deselect all native tabs
       nav.querySelectorAll('.el-tabs__item').forEach(function(item) {

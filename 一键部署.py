@@ -23,7 +23,7 @@ import sys
 import threading
 import time
 
-ROUTER_HOST = "192.168.1.2"
+ROUTER_HOST = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else os.environ.get("ROUTER_HOST", "192.168.1.2")
 ROUTER_PORT = 23
 ROUTER_USER = "root"
 ROUTER_PASS = "Z.123456z"
@@ -274,15 +274,15 @@ def main():
         print("=" * 66)
         print("\n📺 常用访问入口与订阅地址：")
         print("  1. 路由器原厂管理页 (已注入 1:1 原生风格「IPTV插件」独立选项卡)：")
-        print("     -> 访问: http://192.168.1.2/#/app/application")
-        print("     -> 特性: 独立「IPTV插件」开关（提交后生效），绝不干扰网易UU、玩辰、节点小宝")
+        print(f"     -> 访问: http://{ROUTER_HOST}/#/app/application")
+        print("     -> 特性: 独立「IPTV插件」开关（提交后生效，超链接全自适应当前访问IP），绝不干扰网易UU、玩辰、节点小宝")
         print("\n  2. IPTV 独立管理后台：")
-        print("     -> 地址: http://192.168.1.2:4022/")
+        print(f"     -> 地址: http://{ROUTER_HOST}:4022/")
         print("     -> 账号: mc838   密码: 8462277")
         print("\n  3. 电视盒 / 播放器 M3U 播放列表订阅源：")
-        print("     -> 地址: http://192.168.1.2:4022/playlist")
+        print(f"     -> 地址: http://{ROUTER_HOST}:4022/playlist")
         print("\n  4. 电视盒 / 播放器 XMLTV 电子节目单 (EPG)：")
-        print("     -> 地址: http://192.168.1.2:4022/xmltv")
+        print(f"     -> 地址: http://{ROUTER_HOST}:4022/xmltv")
         print("\n🛡️ 特别说明：")
         print("  - 日常运行常驻内存仅 ~1.5 MB，CPU 占用 0%；")
         print("  - 日志与台标全部保存在内存盘 (/tmp)，对闪存零写入磨损；")
