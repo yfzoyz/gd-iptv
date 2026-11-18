@@ -28,7 +28,7 @@ import threading
 import time
 import urllib.request
 
-EXPECTED_MD5 = "266b6151a144f8b89d2e70fb45847b54"
+EXPECTED_MD5 = "cae99f4cad71170bfd5aeccf8062953f"
 ROUTER_PORT = 23
 ROUTER_USER = "root"
 HTTP_PORT = 8000
