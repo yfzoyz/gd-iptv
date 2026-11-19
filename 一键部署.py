@@ -245,8 +245,7 @@ def ensure_binary_exists(bin_path: str, expected_md5: str) -> bool:
 
     urls = [
         "https://github.com/yfzoyz/gd-iptv/releases/download/v0.3.5/gd-iptv-panel-linux-arm64-upx",
-        "https://ghproxy.net/https://github.com/yfzoyz/gd-iptv/releases/download/v0.3.5/gd-iptv-panel-linux-arm64-upx",
-        "https://mirror.ghproxy.com/https://github.com/yfzoyz/gd-iptv/releases/download/v0.3.5/gd-iptv-panel-linux-arm64-upx"
+        "https://gh-proxy.com/https://github.com/yfzoyz/gd-iptv/releases/download/v0.3.5/gd-iptv-panel-linux-arm64-upx"
     ]
 
     for url in urls:
