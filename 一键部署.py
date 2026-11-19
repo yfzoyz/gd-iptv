@@ -31,7 +31,7 @@ import threading
 import time
 import urllib.request
 
-EXPECTED_MD5 = "8ce36934894ec443fe8d618e7f80f905"
+DEFAULT_REPO = os.environ.get("REPO", "yfzoyz/gd-iptv").strip()
 ROUTER_PORT = 23
 ROUTER_USER = "root"
 HTTP_PORT = 8000
@@ -225,48 +225,104 @@ def get_local_lan_ip(target_ip: str) -> str:
             print("\n用户已取消操作。")
             sys.exit(1)
 
-def ensure_binary_exists(bin_path: str, expected_md5: str) -> bool:
+def fetch_latest_release(repo: str = DEFAULT_REPO) -> dict:
     """
-    检查本地 deploy_assets/gd-iptv-panel 二进制是否存在且 MD5 匹配。
-    若不存在或校验不匹配（如全新 git clone 场景），自动从 GitHub Release 极速下载。
+    通过国内加速镜像 (https://gh-proxy.com/) 和官方 GitHub API 动态获取最新 Release 元数据。
+    完全不写死版本号！
     """
+    api_urls = [
+        f"https://gh-proxy.com/https://api.github.com/repos/{repo}/releases/latest",
+        f"https://api.github.com/repos/{repo}/releases/latest"
+    ]
+    for url in api_urls:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            pass
+    return None
+
+def ensure_binary_exists(bin_path: str, repo: str = DEFAULT_REPO) -> tuple:
+    """
+    智能获取最新的 ARM64 (UPX) 二进制程序并返回 (success, calculated_md5)。
+    完全不写死版本号，动态拉取 GitHub releases/latest。
+    国内优先通过 https://gh-proxy.com/ 极速镜像加速下载。
+    """
+    print(f"[*] 正在从 GitHub releases/latest 检查最新发布版本 (优先国内加速镜像 gh-proxy.com)...")
+    rel_data = fetch_latest_release(repo)
+
+    tag_name = "latest"
+    target_asset = None
+    expected_sha256 = None
+
+    if rel_data:
+        tag_name = rel_data.get("tag_name", "latest")
+        assets = rel_data.get("assets", [])
+        for a in assets:
+            if a.get("name") == "gd-iptv-panel-linux-arm64-upx":
+                target_asset = a
+                break
+        if not target_asset:
+            for a in assets:
+                if a.get("name") == "gd-iptv-panel-linux-arm64":
+                    target_asset = a
+                    break
+        if target_asset:
+            digest = target_asset.get("digest", "")
+            if digest.startswith("sha256:"):
+                expected_sha256 = digest[7:].lower()
+
+    # 检查本地是否已有二进制文件
     if os.path.exists(bin_path):
         try:
             with open(bin_path, "rb") as f:
-                local_md5 = hashlib.md5(f.read()).hexdigest().lower()
-            if local_md5 == expected_md5.lower():
-                return True
-            print(f"[!] 本地二进制 MD5 校验不匹配，准备重新拉取官方发布版...")
+                content = f.read()
+            local_sha256 = hashlib.sha256(content).hexdigest().lower()
+            local_md5 = hashlib.md5(content).hexdigest().lower()
+            if expected_sha256 and local_sha256 == expected_sha256:
+                print(f"[+] 本地已有二进制程序，且与官方最新版本 ({tag_name}) 完全一致！(MD5: {local_md5})")
+                return True, local_md5
+            elif not rel_data:
+                # 离线环境且无法访问 GitHub API 时，直接复用本地已有文件
+                print(f"[*] 当前网络离线，复用本地现有二进制程序 (MD5: {local_md5})...")
+                return True, local_md5
+            print(f"[!] 本地程序版本需同步至最新发布版 ({tag_name})...")
         except Exception:
             pass
 
     os.makedirs(os.path.dirname(bin_path), exist_ok=True)
-    print("[*] 正在从官方 GitHub Release 自动下载最新的 ARM64 (UPX) 二进制程序...")
+    print(f"[*] 正在自动下载最新版本 [{tag_name}] ARM64 二进制文件...")
 
-    urls = [
-        "https://github.com/yfzoyz/gd-iptv/releases/download/v0.3.5/gd-iptv-panel-linux-arm64-upx",
-        "https://gh-proxy.com/https://github.com/yfzoyz/gd-iptv/releases/download/v0.3.5/gd-iptv-panel-linux-arm64-upx"
+    raw_dl_url = target_asset.get("browser_download_url") if target_asset else f"https://github.com/{repo}/releases/latest/download/gd-iptv-panel-linux-arm64-upx"
+
+    dl_urls = [
+        f"https://gh-proxy.com/{raw_dl_url}",
+        raw_dl_url
     ]
 
-    for url in urls:
+    for dl_url in dl_urls:
         try:
-            domain = url.split("/")[2]
-            print(f"    正在连接下载源 ({domain})...")
-            req = urllib.request.Request(url, headers={"User-Agent": "gd-iptv-deployer"})
+            proxy_hint = "国内加速镜像 (gh-proxy.com)" if "gh-proxy.com" in dl_url else "官方 GitHub"
+            print(f"    正在连接下载源: {proxy_hint}...")
+            req = urllib.request.Request(dl_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = resp.read()
+                if not data or len(data) < 100000:
+                    continue
+                calc_sha = hashlib.sha256(data).hexdigest().lower()
+                if expected_sha256 and calc_sha != expected_sha256:
+                    print(f"[-] SHA256 校验不匹配，尝试其他下载源...")
+                    continue
+                with open(bin_path, "wb") as f:
+                    f.write(data)
                 calc_md5 = hashlib.md5(data).hexdigest().lower()
-                if calc_md5 == expected_md5.lower():
-                    with open(bin_path, "wb") as f:
-                        f.write(data)
-                    print(f"[+] 自动下载完成，MD5 完整性校验 100% 匹配！\n")
-                    return True
-                else:
-                    print(f"[-] 下载数据 MD5 不匹配 ({calc_md5})，尝试备用源...")
+                print(f"[+] [{tag_name}] 二进制下载成功，校验无误！(MD5: {calc_md5})\n")
+                return True, calc_md5
         except Exception as ex:
-            print(f"[-] 连接失败: {ex}，尝试下一个源...")
+            print(f"[-] 连接失败: {ex}")
 
-    return False
+    return False, ""
 
 def main():
     print("=" * 68)
@@ -277,7 +333,8 @@ def main():
     router_pass = get_router_pass()
 
     bin_path = os.path.join(ASSETS_DIR, "gd-iptv-panel")
-    if not ensure_binary_exists(bin_path, EXPECTED_MD5):
+    ok, current_md5 = ensure_binary_exists(bin_path, DEFAULT_REPO)
+    if not ok or not current_md5:
         print(f"[-] 错误: 无法获取主程序二进制文件！请检查网络或手动下载放入 {bin_path}")
         return
 
@@ -310,12 +367,12 @@ def main():
         telnet.cmd(dl_cmd)
 
         # 6. MD5 校验
-        print("[*] 步骤 3/6: 校验二进制完整性 (MD5)...")
+        print(f"[*] 步骤 3/6: 校验二进制完整性 (MD5: {current_md5})...")
         md5_out = telnet.cmd("md5sum /tmp/gd-iptv-panel.tmp")
         print(f"    路由器计算值: {md5_out}")
-        if EXPECTED_MD5 not in md5_out:
+        if current_md5 not in md5_out:
             telnet.cmd("rm -f /tmp/gd-iptv-panel.tmp")
-            raise RuntimeError(f"MD5 校验失败！期望值: {EXPECTED_MD5}")
+            raise RuntimeError(f"MD5 校验失败！期望值: {current_md5}")
         print("[+] MD5 校验 100% 匹配无误！")
 
         # 7. 固化安装到 /jdxb 持久化分区 (方案 3: 合二为一，深度融合节点小宝，保护网易 UU 插件)
