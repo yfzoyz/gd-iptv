@@ -9,15 +9,19 @@
 
   // Ensure scoped style tag for non-destructive tab isolation
   function ensureInjectedStyle() {
-    if (document.getElementById('iptv-tab-custom-style')) return;
-    var style = document.createElement('style');
-    style.id = 'iptv-tab-custom-style';
+    var style = document.getElementById('iptv-tab-custom-style');
+    if (!style) {
+      style = document.createElement('style');
+      style.id = 'iptv-tab-custom-style';
+      document.head.appendChild(style);
+    }
     style.innerHTML = [
       '.iptv-force-hide { display: none !important; }',
       '#tab-IPTVplugin.is-active { color: #04affa !important; font-weight: 500; }',
-      '#iptv-entry-link:hover { text-decoration: underline !important; }'
+      '#pane-IPTVplugin .el-alert__description, #pane-IPTVplugin .el-alert__description *, #pane-IPTVplugin .el-alert__content span { color: #222 !important; }',
+      '#pane-IPTVplugin a.text-href, #pane-IPTVplugin #iptv-entry-link { color: #04affa !important; text-decoration: none !important; }',
+      '#pane-IPTVplugin a.text-href:hover, #pane-IPTVplugin #iptv-entry-link:hover { text-decoration: underline !important; }'
     ].join('\n');
-    document.head.appendChild(style);
   }
 
   var committed = (localStorage.getItem('iptv_plugin_state') !== '0');
@@ -125,7 +129,7 @@
       '        <i class="el-alert__icon el-icon-warning is-big"></i>',
       '        <div class="el-alert__content">',
       '          <p class="el-alert__description">',
-      '            <div><span>首次打开插件，请点击链接：</span> <a id="iptv-entry-link" href="' + getIptvUrl() + '" target="_blank" class="text-blue text-href">IPTV插件</a> <span>进入IPTV插件设置页面。</span></div>',
+      '            <span>首次打开插件，请点击链接：</span> <a id="iptv-entry-link" href="' + getIptvUrl() + '" target="_blank" class="text-blue text-href">IPTV插件</a> <span>进入IPTV插件设置页面。</span>',
       '          </p>',
       '          <i class="el-alert__closebtn el-icon-close" style="display: none;"></i>',
       '        </div>',
