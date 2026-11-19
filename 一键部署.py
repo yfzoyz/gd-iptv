@@ -12,7 +12,7 @@
      100% 保持 Element UI 官方原厂质感与字体，彻底消除悬停下划线；
   5. 独立开关管理：原生开关绑定，开启自启，关闭卸载并还原原厂页面；
   6. 独家保护：完全不碰网易 UU 插件 (/UUPlugin/)，UU 加速器原厂功能 100% 保留与正常使用；
-  7. 绝不修改路由器底层只读固件与系统内网 IP (默认保护 192.168.1.2)；
+  7. 绝不修改路由器底层只读固件与系统内网 IP (默认保护 192.168.5.1)；
   8. 零凭据硬编码：密码纯交互式输入（无回显掩码）或环境变量注入，绝不内嵌任何密码。
 """
 
@@ -152,13 +152,13 @@ class TelnetClient:
             self.sock = None
 
 def get_router_host() -> str:
-    """获取目标路由器 IP：优先 CLI 参数 -> 环境变量 -> 交互输入 (默认 192.168.1.2)"""
+    """获取目标路由器 IP：优先 CLI 参数 -> 环境变量 -> 交互输入 (默认 192.168.5.1)"""
     if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
         return sys.argv[1].strip()
     env_val = os.environ.get("ROUTER_HOST", "").strip()
     if env_val:
         return env_val
-    default_ip = "192.168.1.2"
+    default_ip = "192.168.5.1"
     while True:
         try:
             user_ip = input(f"请输入路由器管理后台 IP [直接回车使用当前内网IP: {default_ip}]: ").strip()
