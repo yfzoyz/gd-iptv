@@ -253,7 +253,7 @@ def main():
     telnet = TelnetClient(host=router_host, port=ROUTER_PORT, user=ROUTER_USER, passwd=router_pass)
     try:
         # 3. 建立 Telnet 会话
-        print(f"\n[*] 步骤 1/7: 连接路由器 Telnet 终端 ({router_host}:{ROUTER_PORT})...")
+        print(f"\n[*] 步骤 1/6: 连接路由器 Telnet 终端 ({router_host}:{ROUTER_PORT})...")
         telnet.connect()
         print("[+] 路由器控制台认证登录成功！")
 
@@ -262,12 +262,12 @@ def main():
         telnet.cmd("killall uuplugin 2>/dev/null || true")
 
         # 5. 下载二进制到 /tmp 内存盘中转 (零闪存磨损风险)
-        print("\n[*] 步骤 2/7: 极速下发二进制至路由器内存盘...")
+        print("\n[*] 步骤 2/6: 极速下发二进制至路由器内存盘...")
         dl_cmd = f"curl -fsSL -o /tmp/gd-iptv-panel.tmp http://{lan_ip}:{HTTP_PORT}/gd-iptv-panel"
         telnet.cmd(dl_cmd)
 
         # 6. MD5 校验
-        print("[*] 步骤 3/7: 校验二进制完整性 (MD5)...")
+        print("[*] 步骤 3/6: 校验二进制完整性 (MD5)...")
         md5_out = telnet.cmd("md5sum /tmp/gd-iptv-panel.tmp")
         print(f"    路由器计算值: {md5_out}")
         if EXPECTED_MD5 not in md5_out:
@@ -276,7 +276,7 @@ def main():
         print("[+] MD5 校验 100% 匹配无误！")
 
         # 7. 固化安装到 /UUPlugin (智能保留已有配置)
-        print("\n[*] 步骤 4/7: 安装程序与业务配置到持久化分区...")
+        print("\n[*] 步骤 4/6: 安装程序与业务配置到持久化分区...")
         telnet.cmd("mv -f /tmp/gd-iptv-panel.tmp /UUPlugin/gd-iptv-panel && chmod 755 /UUPlugin/gd-iptv-panel")
         
         # 智能配置保护：若路由器已有 config.json 则予以保留，避免覆盖用户已填账号密码
@@ -291,19 +291,14 @@ def main():
         telnet.cmd(f"curl -fsSL -o /UUPlugin/index_patched.html http://{lan_ip}:{HTTP_PORT}/index_patched.html")
         telnet.cmd(f"curl -fsSL -o /UUPlugin/uuplugin http://{lan_ip}:{HTTP_PORT}/uuplugin && chmod 755 /UUPlugin/uuplugin")
 
-        # 8. 保持原厂插件状态（不自动打开网易 UU 插件开关）
-        print("\n[*] 步骤 5/7: 保持原厂插件开关状态（不自动打开网易 UU 插件开关）...")
-        telnet.cmd("sendcmd 1 DB set QDCfg 0 QdUUplugindEnable 0")
-        telnet.cmd("sendcmd 1 DB save")
-
-        # 9. 启动服务与挂载前端界面
-        print("\n[*] 步骤 6/7: 启动 IPTV 服务与挂载原生管理页独立选项卡...")
+        # 8. 启动服务与挂载前端界面
+        print("\n[*] 步骤 5/6: 启动 IPTV 服务与挂载原生管理页独立选项卡...")
         telnet.cmd("setsid /UUPlugin/uuplugin >/dev/null 2>&1 &")
         print("    等待进程启动...")
         time.sleep(3)
 
-        # 10. 服务健康检查与实测
-        print("\n[*] 步骤 7/7: 服务端到端健康检查...")
+        # 9. 服务健康检查与实测
+        print("\n[*] 步骤 6/6: 服务端到端健康检查...")
         ps_out = telnet.cmd("ps | grep -E 'gd-iptv-panel|uuplugin'")
         print(f"    进程状态:\n{ps_out}")
 
