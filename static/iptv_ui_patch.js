@@ -86,8 +86,10 @@
     // 1. Create 4th Tab: "IPTV插件"
     var iptvTab = document.createElement('div');
     iptvTab.id = 'tab-IPTVplugin';
+    iptvTab.setAttribute('aria-controls', 'pane-IPTVplugin');
     iptvTab.setAttribute('role', 'tab');
     iptvTab.setAttribute('tabindex', '-1');
+    iptvTab.setAttribute('aria-selected', 'false');
     iptvTab.className = 'el-tabs__item is-top';
     iptvTab.innerText = 'IPTV插件';
     iptvTab.style.width = '25%';
@@ -100,6 +102,7 @@
     var iptvPane = document.createElement('div');
     iptvPane.id = 'pane-IPTVplugin';
     iptvPane.setAttribute('role', 'tabpanel');
+    iptvPane.setAttribute('aria-labelledby', 'tab-IPTVplugin');
     iptvPane.setAttribute('aria-hidden', 'true');
     iptvPane.className = 'el-tab-pane subPage';
     iptvPane.style.display = 'none';
