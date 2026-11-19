@@ -1,313 +1,82 @@
-<!DOCTYPE html><html><head><link href=/jquery/static/css/app.de42dc3.css rel=stylesheet></head><body data-theme=light><div id=app></div><script type=text/javascript src=/jquery/static/js/manifest.ff52723.js></script><script type=text/javascript src=/jquery/static/js/vendor.e33bc37.js></script><script type=text/javascript src=/jquery/static/js/app.265073a.js></script><script>
-(function () {
-  function getIptvUrl(path) {
-    var proto = window.location.protocol || 'http:';
-    var host = window.location.hostname || (window.location.host ? window.location.host.split(':')[0] : '');
-    var base = proto + '//' + host + ':4022';
-    return path ? (base + path) : base;
-  }
-
-  // Ensure scoped style tag for non-destructive tab isolation
-  function ensureInjectedStyle() {
-    var style = document.getElementById('iptv-tab-custom-style');
-    if (!style) {
-      style = document.createElement('style');
-      style.id = 'iptv-tab-custom-style';
-      document.head.appendChild(style);
-    }
-    style.innerHTML = [
-      '.iptv-force-hide { display: none !important; }',
-      '#tab-IPTVplugin.is-active { color: #04affa !important; font-weight: 500; }',
-      '#pane-IPTVplugin .el-alert__description, #pane-IPTVplugin .el-alert__description *, #pane-IPTVplugin .el-alert__content span { color: #222 !important; }',
-      '#pane-IPTVplugin a.text-href, #pane-IPTVplugin #iptv-entry-link { color: #04affa !important; text-decoration: none !important; }',
-      '#pane-IPTVplugin a.text-href:hover, #pane-IPTVplugin #iptv-entry-link:hover { text-decoration: underline !important; }'
-    ].join('\n');
-  }
-
-  var committed = (localStorage.getItem('iptv_plugin_state') !== '0');
-  var pending = committed;
-
-  // Sync state from backend if reachable
-  function syncBackendState() {
-    try {
-      fetch(getIptvUrl('/api/plugin/state'), { mode: 'cors' })
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-          if (typeof d.enabled === 'boolean') {
-            committed = d.enabled;
-            pending = committed;
-            localStorage.setItem('iptv_plugin_state', committed ? '1' : '0');
-            renderSwitch(committed);
-          }
-        })
-        .catch(function () { });
-    } catch (e) { }
-  }
-
-  function renderSwitch(state) {
-    var sw = document.getElementById('iptv-ui-switch');
-    var chk = document.getElementById('iptv-ui-checkbox');
-    var alertRow = document.getElementById('iptv-alert-row');
-    if (!sw || !chk || !alertRow) return;
-
-    if (state) {
-      sw.classList.add('is-checked');
-      sw.setAttribute('aria-checked', 'true');
-      chk.checked = true;
-      alertRow.style.display = 'block';
-    } else {
-      sw.classList.remove('is-checked');
-      sw.setAttribute('aria-checked', 'false');
-      chk.checked = false;
-      alertRow.style.display = 'none';
-    }
-  }
-
-  function initIptvTab() {
-    if (!window.location.hash.includes('/app/application')) return;
-    var uuTab = document.getElementById('tab-UUplugin');
-    if (!uuTab) return;
-
-    var nav = uuTab.parentElement;
-    if (!nav) return;
-    var tabsWrap = nav.closest('.el-tabs');
-    var content = tabsWrap ? tabsWrap.querySelector('.el-tabs__content') : null;
-    if (!content) return;
-
-    ensureInjectedStyle();
-
-    // Adjust tab widths to 25% for 4 tabs
-    var activeBar = nav.querySelector('.el-tabs__active-bar');
-    if (activeBar) {
-      activeBar.style.width = '25%';
-    }
-    nav.querySelectorAll('.el-tabs__item').forEach(function (item) {
-      item.style.width = '25%';
-      item.style.textAlign = 'center';
-    });
-
-    if (document.getElementById('tab-IPTVplugin')) return;
-
-    // 1. Create 4th Tab: "IPTV插件"
-    var iptvTab = document.createElement('div');
-    iptvTab.id = 'tab-IPTVplugin';
-    iptvTab.setAttribute('aria-controls', 'pane-IPTVplugin');
-    iptvTab.setAttribute('role', 'tab');
-    iptvTab.setAttribute('tabindex', '-1');
-    iptvTab.setAttribute('aria-selected', 'false');
-    iptvTab.className = 'el-tabs__item is-top';
-    iptvTab.innerText = 'IPTV插件';
-    iptvTab.style.width = '25%';
-    iptvTab.style.textAlign = 'center';
-    iptvTab.style.cursor = 'pointer';
-
-    nav.appendChild(iptvTab);
-
-    // 2. Create 4th Tab Pane: "pane-IPTVplugin"
-    var iptvPane = document.createElement('div');
-    iptvPane.id = 'pane-IPTVplugin';
-    iptvPane.setAttribute('role', 'tabpanel');
-    iptvPane.setAttribute('aria-labelledby', 'tab-IPTVplugin');
-    iptvPane.setAttribute('aria-hidden', 'true');
-    iptvPane.className = 'el-tab-pane subPage';
-    iptvPane.style.display = 'none';
-
-    iptvPane.innerHTML = [
-      '<form class="el-form el-form--label-top">',
-      '  <div class="el-form-item is-no-asterisk">',
-      '    <div class="el-form-item__content">',
-      '      <span class="spanwsty">开关</span>',
-      '      <div role="switch" id="iptv-ui-switch" aria-checked="true" class="el-switch is-checked" style="cursor: pointer;">',
-      '        <input type="checkbox" id="iptv-ui-checkbox" class="el-switch__input" checked>',
-      '        <span class="el-switch__core" style="width: 40px;"></span>',
-      '      </div>',
-      '    </div>',
-      '  </div>',
-      '  <div id="iptv-alert-row" class="el-form-item is-no-asterisk" style="display: block;">',
-      '    <div class="el-form-item__content">',
-      '      <div role="alert" class="el-alert el-alert--warning is-light">',
-      '        <i class="el-alert__icon el-icon-warning is-big"></i>',
-      '        <div class="el-alert__content">',
-      '          <p class="el-alert__description">',
-      '            <span>首次打开插件，请点击链接：</span> <a id="iptv-entry-link" href="' + getIptvUrl() + '" target="_blank" class="text-blue text-href">IPTV插件</a> <span>进入IPTV插件设置页面。</span>',
-      '          </p>',
-      '          <i class="el-alert__closebtn el-icon-close" style="display: none;"></i>',
-      '        </div>',
-      '      </div>',
-      '    </div>',
-      '  </div>',
-      '  <div id="iptv-success-card" class="el-card cardStyle is-never-shadow" style="background: rgb(246, 255, 236); display: none; margin-bottom: 22px;">',
-      '    <div class="el-card__body">',
-      '      <div style="font-size: 14px; color: #67c23a; display: flex; align-items: center;">',
-      '        <img src="/jquery/static/img/home/complete_16.png" style="margin-right: 10px;">',
-      '        <span>提交成功！</span>',
-      '      </div>',
-      '    </div>',
-      '  </div>',
-      '  <div class="el-form-item btnRow is-no-asterisk">',
-      '    <div class="el-form-item__content">',
-      '      <button type="button" id="iptv-submit-btn" class="el-button el-button--primary">',
-      '        <span>提交</span>',
-      '      </button>',
-      '    </div>',
-      '  </div>',
-      '</form>'
-    ].join('');
-
-    content.appendChild(iptvPane);
-
-    // Make entry link 100% adaptive on hover/click
-    var entryLink = document.getElementById('iptv-entry-link');
-    if (entryLink) {
-      entryLink.addEventListener('mouseenter', function () {
-        this.href = getIptvUrl();
-      });
-      entryLink.addEventListener('click', function () {
-        this.href = getIptvUrl();
-      });
-    }
-
-    // Initial render & sync
-    pending = committed;
-    renderSwitch(committed);
-    syncBackendState();
-
-    // 3. Switch Click: Only toggles pending visual state; does NOT take effect until Submit
-    var sw = document.getElementById('iptv-ui-switch');
-    if (sw) {
-      sw.onclick = function (e) {
-        e.preventDefault();
-        pending = !pending;
-        renderSwitch(pending);
-      };
-    }
-
-    // 4. Submit Button Click: Takes effect, commits state & calls backend API
-    var submitBtn = document.getElementById('iptv-submit-btn');
-    if (submitBtn) {
-      submitBtn.onclick = function (e) {
-        e.preventDefault();
-        committed = pending;
-        localStorage.setItem('iptv_plugin_state', committed ? '1' : '0');
-
-        // Notify backend service adaptively
-        try {
-          var targetAction = committed ? 'enable' : 'disable';
-          fetch(getIptvUrl('/api/plugin/' + targetAction), { method: 'POST', mode: 'cors' }).catch(function () { });
-        } catch (ex) { }
-
-        // Show success notification card
-        var card = document.getElementById('iptv-success-card');
-        if (card) {
-          card.style.display = 'block';
-          setTimeout(function () {
-            card.style.display = 'none';
-          }, 2500);
+<!DOCTYPE html><html><head><link href=/jquery/static/css/app.de42dc3.css rel=stylesheet>
+<style>
+/* 保证菜单与超链接绝不出现意外下划线，保持 100% 官方原厂质感 */
+a, a:hover, a:focus, .el-menu-item, .el-menu-item * {
+  text-decoration: none !important;
+}
+</style>
+</head><body data-theme=light><div id=app></div><script type=text/javascript src=/jquery/static/js/manifest.ff52723.js></script><script type=text/javascript src=/jquery/static/js/vendor.e33bc37.js></script><script type=text/javascript src=/jquery/static/js/app.265073a.js></script>
+<!-- IPTV Panel Tab 3 Remodel (方案 3: 合二为一 - 节点小宝原生 Element UI 复用) -->
+<script>
+(function() {
+  function applyIptvPatch() {
+    // 1. Rename Tab 3 from "节点小宝" to "IPTV插件"
+    var tab = document.getElementById('tab-JDXBplugin');
+    if (tab) {
+      for (var i = 0; i < tab.childNodes.length; i++) {
+        var node = tab.childNodes[i];
+        if (node.nodeType === 3 && node.nodeValue && node.nodeValue.indexOf('节点小宝') !== -1) {
+          node.nodeValue = 'IPTV插件';
         }
-
-        // Trigger Element UI toast if available
-        try {
-          if (window.ELEMENT && window.ELEMENT.Message) {
-            window.ELEMENT.Message({ message: '提交成功！', type: 'success' });
-          } else if (document.querySelector('#app') && document.querySelector('#app').__vue__ && document.querySelector('#app').__vue__.$message) {
-            document.querySelector('#app').__vue__.$message({ message: '提交成功！', type: 'success' });
-          }
-        } catch (ex) { }
-      };
-    }
-
-    // 5. Helper to hide all native panes non-destructively
-    function hideNativePanes() {
-      content.querySelectorAll('.el-tab-pane').forEach(function (pane) {
-        if (pane !== iptvPane) {
-          pane.classList.add('iptv-force-hide');
-        }
-      });
-    }
-
-    function restoreNativePanes() {
-      content.querySelectorAll('.el-tab-pane').forEach(function (pane) {
-        pane.classList.remove('iptv-force-hide');
-      });
-    }
-
-    // 6. Tab Select Handler for IPTV Tab
-    function selectIptvTab() {
-      pending = committed;
-      renderSwitch(committed);
-
-      if (entryLink) {
-        entryLink.href = getIptvUrl();
       }
-
-      // Deselect native tabs
-      nav.querySelectorAll('.el-tabs__item').forEach(function (item) {
-        if (item !== iptvTab) {
-          item.classList.remove('is-active');
-          item.setAttribute('aria-selected', 'false');
-          item.setAttribute('tabindex', '-1');
-        }
-      });
-
-      // Hide all native panes via non-destructive CSS class
-      hideNativePanes();
-
-      // Show IPTV pane
-      iptvTab.classList.add('is-active');
-      iptvTab.setAttribute('aria-selected', 'true');
-      iptvTab.setAttribute('tabindex', '0');
-      iptvPane.style.display = 'block';
-      iptvPane.setAttribute('aria-hidden', 'false');
-
-      if (activeBar) {
-        activeBar.style.width = '25%';
-        activeBar.style.transform = 'translateX(300%)';
+      if (tab.textContent.indexOf('节点小宝') !== -1) {
+        tab.textContent = 'IPTV插件';
       }
     }
 
-    iptvTab.onclick = selectIptvTab;
-
-    // 7. Delegated Click Handler on nav for native tabs (UU, 玩辰, 节点小宝)
-    // Using delegation ensures that even if Vue replaces tab headers, native switching is NEVER broken!
-    nav.addEventListener('click', function (e) {
-      var item = e.target.closest('.el-tabs__item');
-      if (!item || item === iptvTab) return;
-
-      // Deselect IPTV tab and hide IPTV pane
-      iptvTab.classList.remove('is-active');
-      iptvTab.setAttribute('aria-selected', 'false');
-      iptvPane.style.display = 'none';
-      iptvPane.setAttribute('aria-hidden', 'true');
-
-      // Immediately restore native panes so Vue's v-show displays the clicked tab cleanly!
-      restoreNativePanes();
-
-      pending = committed;
-      renderSwitch(committed);
-
-      // Recalculate 25% width and active bar position
-      var allItems = Array.prototype.slice.call(nav.querySelectorAll('.el-tabs__item'));
-      var idx = allItems.indexOf(item);
-      setTimeout(function () {
-        allItems.forEach(function (t) {
-          t.style.width = '25%';
-        });
-        if (activeBar && idx >= 0) {
-          activeBar.style.width = '25%';
-          activeBar.style.transform = 'translateX(' + (idx * 100) + '%)';
+    // 2. Remodel native Element UI alert box inside pane-JDXBplugin
+    var pane = document.getElementById('pane-JDXBplugin');
+    if (pane) {
+      var alertEl = pane.querySelector('.el-alert');
+      if (alertEl) {
+        var link = alertEl.querySelector('a.text-blue, a.text-href');
+        if (link) {
+          var targetUrl = window.location.protocol + '//' + window.location.hostname + ':4022';
+          if (link.getAttribute('href') !== targetUrl) {
+            link.setAttribute('href', targetUrl);
+          }
+          if (link.textContent !== 'IPTV插件') {
+            link.textContent = 'IPTV插件';
+          }
+          if (!link.__iptv_fixed) {
+            link.__iptv_fixed = true;
+            link.addEventListener('click', function(e) {
+              e.stopImmediatePropagation();
+            }, true);
+          }
         }
-      }, 30);
-    }, true);
+        var spans = alertEl.querySelectorAll('span');
+        for (var j = 0; j < spans.length; j++) {
+          if (spans[j].textContent && spans[j].textContent.indexOf('节点小宝') !== -1) {
+            spans[j].textContent = spans[j].textContent.replace(/节点小宝/g, 'IPTV插件');
+          }
+        }
+      }
+    }
   }
 
-  // Observer on DOM changes to keep tabs and inject when entering /app/application
-  var obs = new MutationObserver(function () {
-    initIptvTab();
+  var scheduled = false;
+  var obs = new MutationObserver(function() {
+    if (!scheduled) {
+      scheduled = true;
+      requestAnimationFrame(function() {
+        scheduled = false;
+        applyIptvPatch();
+      });
+    }
   });
-  obs.observe(document.body, { childList: true, subtree: true });
-  window.addEventListener('hashchange', initIptvTab);
-  initIptvTab();
+
+  obs.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    characterData: true
+  });
+
+  window.addEventListener('hashchange', applyIptvPatch);
+  document.addEventListener('DOMContentLoaded', applyIptvPatch);
+  applyIptvPatch();
 })();
-</script></body></html><script>if ('production' === 'development') {
+</script>
+</body></html><script>if ('production' === 'development') {
    var g_sessionTmpToken = ""
   }</script>
