@@ -201,8 +201,7 @@ async fn authenticate_and_fetch_channels(
     let ip = cfg.iptv.address.as_str();
 
     let mut session = HttpSession::new(cfg.iptv.interface.clone(), HTTP_TIMEOUT);
-    let base_url = fetch_base_url(&mut session, cfg).await?;
-    cache.set(user, cfg.iptv.interface.as_deref(), base_url.clone());
+    let base_url = get_base_url_cached(&mut session, cfg, cache).await?;
 
     // 1. 获取 EncryToken
     let url = Url::parse_with_params(
@@ -460,5 +459,16 @@ mod tests {
         assert_eq!(recs[0].get("ChannelID"), Some(&"1001"));
         assert_eq!(recs[0].get("ChannelName"), Some(&"CCTV-1高清"));
         assert_eq!(recs[1].get("ChannelID"), Some(&"1002"));
+    }
+
+    #[test]
+    fn test_base_url_cache() {
+        let cache = BaseUrlCache::new();
+        assert_eq!(cache.get("u1", None), None);
+        cache.set("u1", None, "http://10.0.0.1:80".to_string());
+        assert_eq!(cache.get("u1", None), Some("http://10.0.0.1:80".to_string()));
+        assert_eq!(cache.get("u2", None), None);
+        cache.invalidate();
+        assert_eq!(cache.get("u1", None), None);
     }
 }

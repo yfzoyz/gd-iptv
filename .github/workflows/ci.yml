@@ -136,7 +136,8 @@ jobs:
             CFG=$(curl -fsS http://127.0.0.1:14022/api/config -H "X-Auth-Token: $TOKEN")
             echo "$CFG" | grep -q '"udp_proxy":true'
 
-            # 保存配置与清理图标缓存
+            # 保存配置与清理图标缓存（含插件状态检查）
+            curl -fsS http://127.0.0.1:14022/api/plugin/state | grep -q '"enabled":true'
             curl -fsS -X POST http://127.0.0.1:14022/api/config \
               -H "X-Auth-Token: $TOKEN" -H 'Content-Type: application/json' \
               -d "$CFG" | grep -q '"ok":true'

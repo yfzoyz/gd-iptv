@@ -82,6 +82,7 @@ pub struct OutputConfig {
     #[serde(default = "default_true")]
     pub enable_top_channels: bool,
     #[serde(default, skip_serializing)]
+    #[allow(dead_code)]
     pub enable_logo: Option<bool>,
 }
 

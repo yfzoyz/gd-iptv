@@ -196,6 +196,10 @@ fn parse_args() -> CliArgs {
                 };
                 pidfile = Some(PathBuf::from(val));
             }
+            "-d" | "--cache-dir" => {
+                // 兼容旧版参数，消费其值并忽略
+                let _ = args.next();
+            }
             "--healthcheck" => {
                 let addr = args.next().unwrap_or_else(|| "127.0.0.1:4022".to_string());
                 healthcheck = Some(addr);
@@ -512,6 +516,14 @@ async fn handle_request(
                 StatusCode::OK,
                 &serde_json::json!({ "ok": true, "message": "配置已保存" }),
             )
+        }
+
+        // API: 清理图标缓存（兼容保留，图标缓存已在 v0.3.5 彻底精简）
+        (Method::POST, "/api/clear-logo-cache") => {
+            if !require_auth(&state, &req) {
+                return Ok(resp_text(StatusCode::UNAUTHORIZED, "Unauthorized"));
+            }
+            resp_json(StatusCode::OK, &serde_json::json!({ "ok": true, "message": "图标缓存已在当前版本移除，无需清理" }))
         }
 
         // API: 状态
