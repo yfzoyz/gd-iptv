@@ -149,16 +149,16 @@ class TelnetClient:
             self.sock = None
 
 def get_router_host() -> str:
-    """获取目标路由器 IP：优先 CLI 参数 -> 环境变量 -> 交互输入 (默认 192.168.5.1)"""
+    """获取目标路由器 IP：优先 CLI 参数 -> 环境变量 -> 交互输入 (默认 192.168.1.2)"""
     if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
         return sys.argv[1].strip()
     env_val = os.environ.get("ROUTER_HOST", "").strip()
     if env_val:
         return env_val
-    default_ip = "192.168.5.1"
+    default_ip = "192.168.1.2"
     while True:
         try:
-            user_ip = input(f"请输入路由器管理后台 IP [出厂默认直接回车: {default_ip}]: ").strip()
+            user_ip = input(f"请输入路由器管理后台 IP [直接回车使用当前内网IP: {default_ip}]: ").strip()
             target = user_ip if user_ip else default_ip
             parts = target.split(".")
             if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
