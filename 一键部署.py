@@ -291,9 +291,9 @@ def main():
         telnet.cmd(f"curl -fsSL -o /UUPlugin/index_patched.html http://{lan_ip}:{HTTP_PORT}/index_patched.html")
         telnet.cmd(f"curl -fsSL -o /UUPlugin/uuplugin http://{lan_ip}:{HTTP_PORT}/uuplugin && chmod 755 /UUPlugin/uuplugin")
 
-        # 8. 固化冷启动自启开关
-        print("\n[*] 步骤 5/7: 固化冷启动自启设置到系统配置库...")
-        telnet.cmd("sendcmd 1 DB set QDCfg 0 QdUUplugindEnable 1")
+        # 8. 保持原厂插件状态（不自动打开网易 UU 插件开关）
+        print("\n[*] 步骤 5/7: 保持原厂插件开关状态（不自动打开网易 UU 插件开关）...")
+        telnet.cmd("sendcmd 1 DB set QDCfg 0 QdUUplugindEnable 0")
         telnet.cmd("sendcmd 1 DB save")
 
         # 9. 启动服务与挂载前端界面

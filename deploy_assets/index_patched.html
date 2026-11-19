@@ -1,5 +1,5 @@
 <!DOCTYPE html><html><head><link href=/jquery/static/css/app.de42dc3.css rel=stylesheet></head><body data-theme=light><div id=app></div><script type=text/javascript src=/jquery/static/js/manifest.ff52723.js></script><script type=text/javascript src=/jquery/static/js/vendor.e33bc37.js></script><script type=text/javascript src=/jquery/static/js/app.265073a.js></script><script>
-(function() {
+(function () {
   function getIptvUrl(path) {
     var proto = window.location.protocol || 'http:';
     var host = window.location.hostname || (window.location.host ? window.location.host.split(':')[0] : '');
@@ -27,8 +27,8 @@
   function syncBackendState() {
     try {
       fetch(getIptvUrl('/api/plugin/state'), { mode: 'cors' })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
           if (typeof d.enabled === 'boolean') {
             committed = d.enabled;
             pending = committed;
@@ -36,8 +36,8 @@
             renderSwitch(committed);
           }
         })
-        .catch(function() {});
-    } catch(e) {}
+        .catch(function () { });
+    } catch (e) { }
   }
 
   function renderSwitch(state) {
@@ -77,7 +77,7 @@
     if (activeBar) {
       activeBar.style.width = '25%';
     }
-    nav.querySelectorAll('.el-tabs__item').forEach(function(item) {
+    nav.querySelectorAll('.el-tabs__item').forEach(function (item) {
       item.style.width = '25%';
       item.style.textAlign = 'center';
     });
@@ -118,12 +118,13 @@
       '  </div>',
       '  <div id="iptv-alert-row" class="el-form-item is-no-asterisk" style="display: block;">',
       '    <div class="el-form-item__content">',
-      '      <div role="alert" class="el-alert is-light" style="background-color: #e6f5fe; border: 1px solid #b3d8ff; padding: 8px 16px; border-radius: 4px; display: flex; align-items: center;">',
-      '        <i class="el-alert__icon el-icon-info is-big" style="color: #04affa; font-size: 18px; margin-right: 10px; flex-shrink: 0;"></i>',
-      '        <div class="el-alert__content" style="padding: 0;">',
-      '          <p class="el-alert__description" style="margin: 0; color: #606266; font-size: 13px; line-height: 18px;">',
-      '            <span>首次打开插件，请点击链接：</span><a id="iptv-entry-link" href="' + getIptvUrl() + '" target="_blank" class="text-blue text-href" style="color: #04affa; text-decoration: none; cursor: pointer;">IPTV插件</a><span> 进入IPTV插件设置页面。</span>',
+      '      <div role="alert" class="el-alert el-alert--warning is-light">',
+      '        <i class="el-alert__icon el-icon-warning is-big"></i>',
+      '        <div class="el-alert__content">',
+      '          <p class="el-alert__description">',
+      '            <div><span>首次打开插件，请点击链接：</span> <a id="iptv-entry-link" href="' + getIptvUrl() + '" target="_blank" class="text-blue text-href">IPTV插件</a> <span>进入IPTV插件设置页面。</span></div>',
       '          </p>',
+      '          <i class="el-alert__closebtn el-icon-close" style="display: none;"></i>',
       '        </div>',
       '      </div>',
       '    </div>',
@@ -151,10 +152,10 @@
     // Make entry link 100% adaptive on hover/click
     var entryLink = document.getElementById('iptv-entry-link');
     if (entryLink) {
-      entryLink.addEventListener('mouseenter', function() {
+      entryLink.addEventListener('mouseenter', function () {
         this.href = getIptvUrl();
       });
-      entryLink.addEventListener('click', function() {
+      entryLink.addEventListener('click', function () {
         this.href = getIptvUrl();
       });
     }
@@ -167,7 +168,7 @@
     // 3. Switch Click: Only toggles pending visual state; does NOT take effect until Submit
     var sw = document.getElementById('iptv-ui-switch');
     if (sw) {
-      sw.onclick = function(e) {
+      sw.onclick = function (e) {
         e.preventDefault();
         pending = !pending;
         renderSwitch(pending);
@@ -177,7 +178,7 @@
     // 4. Submit Button Click: Takes effect, commits state & calls backend API
     var submitBtn = document.getElementById('iptv-submit-btn');
     if (submitBtn) {
-      submitBtn.onclick = function(e) {
+      submitBtn.onclick = function (e) {
         e.preventDefault();
         committed = pending;
         localStorage.setItem('iptv_plugin_state', committed ? '1' : '0');
@@ -185,14 +186,14 @@
         // Notify backend service adaptively
         try {
           var targetAction = committed ? 'enable' : 'disable';
-          fetch(getIptvUrl('/api/plugin/' + targetAction), { method: 'POST', mode: 'cors' }).catch(function(){});
-        } catch(ex) {}
+          fetch(getIptvUrl('/api/plugin/' + targetAction), { method: 'POST', mode: 'cors' }).catch(function () { });
+        } catch (ex) { }
 
         // Show success notification card
         var card = document.getElementById('iptv-success-card');
         if (card) {
           card.style.display = 'block';
-          setTimeout(function() {
+          setTimeout(function () {
             card.style.display = 'none';
           }, 2500);
         }
@@ -204,13 +205,13 @@
           } else if (document.querySelector('#app') && document.querySelector('#app').__vue__ && document.querySelector('#app').__vue__.$message) {
             document.querySelector('#app').__vue__.$message({ message: '提交成功！', type: 'success' });
           }
-        } catch(ex) {}
+        } catch (ex) { }
       };
     }
 
     // 5. Helper to hide all native panes non-destructively
     function hideNativePanes() {
-      content.querySelectorAll('.el-tab-pane').forEach(function(pane) {
+      content.querySelectorAll('.el-tab-pane').forEach(function (pane) {
         if (pane !== iptvPane) {
           pane.classList.add('iptv-force-hide');
         }
@@ -218,7 +219,7 @@
     }
 
     function restoreNativePanes() {
-      content.querySelectorAll('.el-tab-pane').forEach(function(pane) {
+      content.querySelectorAll('.el-tab-pane').forEach(function (pane) {
         pane.classList.remove('iptv-force-hide');
       });
     }
@@ -233,7 +234,7 @@
       }
 
       // Deselect native tabs
-      nav.querySelectorAll('.el-tabs__item').forEach(function(item) {
+      nav.querySelectorAll('.el-tabs__item').forEach(function (item) {
         if (item !== iptvTab) {
           item.classList.remove('is-active');
           item.setAttribute('aria-selected', 'false');
@@ -261,7 +262,7 @@
 
     // 7. Delegated Click Handler on nav for native tabs (UU, 玩辰, 节点小宝)
     // Using delegation ensures that even if Vue replaces tab headers, native switching is NEVER broken!
-    nav.addEventListener('click', function(e) {
+    nav.addEventListener('click', function (e) {
       var item = e.target.closest('.el-tabs__item');
       if (!item || item === iptvTab) return;
 
@@ -280,8 +281,8 @@
       // Recalculate 25% width and active bar position
       var allItems = Array.prototype.slice.call(nav.querySelectorAll('.el-tabs__item'));
       var idx = allItems.indexOf(item);
-      setTimeout(function() {
-        allItems.forEach(function(t) {
+      setTimeout(function () {
+        allItems.forEach(function (t) {
           t.style.width = '25%';
         });
         if (activeBar && idx >= 0) {
@@ -293,14 +294,13 @@
   }
 
   // Observer on DOM changes to keep tabs and inject when entering /app/application
-  var obs = new MutationObserver(function() {
+  var obs = new MutationObserver(function () {
     initIptvTab();
   });
   obs.observe(document.body, { childList: true, subtree: true });
   window.addEventListener('hashchange', initIptvTab);
   initIptvTab();
 })();
-
 </script></body></html><script>if ('production' === 'development') {
    var g_sessionTmpToken = ""
   }</script>
