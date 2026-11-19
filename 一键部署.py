@@ -324,6 +324,20 @@ def ensure_binary_exists(bin_path: str, repo: str = DEFAULT_REPO) -> tuple:
 
     return False, ""
 
+def ensure_config_exists():
+    """确保 deploy_assets/config.json 模板存在，若不存在自动从 config.example.json 生成"""
+    cfg_file = os.path.join(ASSETS_DIR, "config.json")
+    if not os.path.exists(cfg_file):
+        example_cfg = os.path.join(BASE_DIR, "config.example.json")
+        if os.path.exists(example_cfg):
+            try:
+                with open(example_cfg, "r", encoding="utf-8") as f:
+                    content = f.read()
+                with open(cfg_file, "w", encoding="utf-8") as f:
+                    f.write(content)
+            except Exception:
+                pass
+
 def main():
     print("=" * 68)
     print("  中兴 AX5400 Pro+ 广东电信 IPTV 面板极速一键部署程序 (方案 3: 合二为一)")
@@ -332,6 +346,7 @@ def main():
     router_host = get_router_host()
     router_pass = get_router_pass()
 
+    ensure_config_exists()
     bin_path = os.path.join(ASSETS_DIR, "gd-iptv-panel")
     ok, current_md5 = ensure_binary_exists(bin_path, DEFAULT_REPO)
     if not ok or not current_md5:
