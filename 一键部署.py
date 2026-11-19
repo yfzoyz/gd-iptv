@@ -18,6 +18,7 @@
 
 import functools
 import getpass
+import hashlib
 import http.server
 import json
 import os
@@ -224,6 +225,50 @@ def get_local_lan_ip(target_ip: str) -> str:
             print("\n用户已取消操作。")
             sys.exit(1)
 
+def ensure_binary_exists(bin_path: str, expected_md5: str) -> bool:
+    """
+    检查本地 deploy_assets/gd-iptv-panel 二进制是否存在且 MD5 匹配。
+    若不存在或校验不匹配（如全新 git clone 场景），自动从 GitHub Release 极速下载。
+    """
+    if os.path.exists(bin_path):
+        try:
+            with open(bin_path, "rb") as f:
+                local_md5 = hashlib.md5(f.read()).hexdigest().lower()
+            if local_md5 == expected_md5.lower():
+                return True
+            print(f"[!] 本地二进制 MD5 校验不匹配，准备重新拉取官方发布版...")
+        except Exception:
+            pass
+
+    os.makedirs(os.path.dirname(bin_path), exist_ok=True)
+    print("[*] 正在从官方 GitHub Release 自动下载最新的 ARM64 (UPX) 二进制程序...")
+
+    urls = [
+        "https://github.com/yfzoyz/gd-iptv/releases/download/v0.3.5/gd-iptv-panel-linux-arm64-upx",
+        "https://ghproxy.net/https://github.com/yfzoyz/gd-iptv/releases/download/v0.3.5/gd-iptv-panel-linux-arm64-upx",
+        "https://mirror.ghproxy.com/https://github.com/yfzoyz/gd-iptv/releases/download/v0.3.5/gd-iptv-panel-linux-arm64-upx"
+    ]
+
+    for url in urls:
+        try:
+            domain = url.split("/")[2]
+            print(f"    正在连接下载源 ({domain})...")
+            req = urllib.request.Request(url, headers={"User-Agent": "gd-iptv-deployer"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = resp.read()
+                calc_md5 = hashlib.md5(data).hexdigest().lower()
+                if calc_md5 == expected_md5.lower():
+                    with open(bin_path, "wb") as f:
+                        f.write(data)
+                    print(f"[+] 自动下载完成，MD5 完整性校验 100% 匹配！\n")
+                    return True
+                else:
+                    print(f"[-] 下载数据 MD5 不匹配 ({calc_md5})，尝试备用源...")
+        except Exception as ex:
+            print(f"[-] 连接失败: {ex}，尝试下一个源...")
+
+    return False
+
 def main():
     print("=" * 68)
     print("  中兴 AX5400 Pro+ 广东电信 IPTV 面板极速一键部署程序 (方案 3: 合二为一)")
@@ -233,8 +278,8 @@ def main():
     router_pass = get_router_pass()
 
     bin_path = os.path.join(ASSETS_DIR, "gd-iptv-panel")
-    if not os.path.exists(bin_path):
-        print(f"[-] 错误: 未在 {bin_path} 找到主程序二进制文件！")
+    if not ensure_binary_exists(bin_path, EXPECTED_MD5):
+        print(f"[-] 错误: 无法获取主程序二进制文件！请检查网络或手动下载放入 {bin_path}")
         return
 
     # 1. 自动解析本机在当前网段下的真实 IP
