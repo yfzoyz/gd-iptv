@@ -1,22 +1,22 @@
-// IPTV Panel Tab 3 Remodel (方案 3: 合二为一 - 节点小宝原生 Element UI 复用)
+// IPTV Panel Tab 2 Remodel (完全复用玩辰插件 - 原生 Element UI 宿主级融合)
 (function() {
   function applyIptvPatch() {
-    // 1. Rename Tab 3 from "节点小宝" to "IPTV插件"
-    var tab = document.getElementById('tab-JDXBplugin');
+    // 1. Rename Tab 2 from "玩辰插件" to "IPTV插件"
+    var tab = document.getElementById('tab-OWDplugin');
     if (tab) {
       for (var i = 0; i < tab.childNodes.length; i++) {
         var node = tab.childNodes[i];
-        if (node.nodeType === 3 && node.nodeValue && node.nodeValue.indexOf('节点小宝') !== -1) {
+        if (node.nodeType === 3 && node.nodeValue && (node.nodeValue.indexOf('玩辰') !== -1 || node.nodeValue.indexOf('OWD') !== -1)) {
           node.nodeValue = 'IPTV插件';
         }
       }
-      if (tab.textContent.indexOf('节点小宝') !== -1) {
+      if (tab.textContent.indexOf('玩辰') !== -1) {
         tab.textContent = 'IPTV插件';
       }
     }
 
-    // 2. Remodel native Element UI alert box inside pane-JDXBplugin
-    var pane = document.getElementById('pane-JDXBplugin');
+    // 2. Remodel native Element UI alert box inside pane-OWDplugin
+    var pane = document.getElementById('pane-OWDplugin');
     if (pane) {
       var alertEl = pane.querySelector('.el-alert');
       if (alertEl) {
@@ -26,8 +26,8 @@
           if (link.getAttribute('href') !== targetUrl) {
             link.setAttribute('href', targetUrl);
           }
-          if (link.textContent !== 'IPTV插件') {
-            link.textContent = 'IPTV插件';
+          if (link.textContent !== 'IPTV设置页面' && link.textContent !== 'IPTV插件') {
+            link.textContent = 'IPTV设置页面';
           }
           if (!link.__iptv_fixed) {
             link.__iptv_fixed = true;
@@ -38,8 +38,8 @@
         }
         var spans = alertEl.querySelectorAll('span');
         for (var j = 0; j < spans.length; j++) {
-          if (spans[j].textContent && spans[j].textContent.indexOf('节点小宝') !== -1) {
-            spans[j].textContent = spans[j].textContent.replace(/节点小宝/g, 'IPTV插件');
+          if (spans[j].textContent && spans[j].textContent.indexOf('玩辰') !== -1) {
+            spans[j].textContent = spans[j].textContent.replace(/玩辰/g, 'IPTV');
           }
         }
       }

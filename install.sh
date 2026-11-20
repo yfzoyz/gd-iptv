@@ -29,15 +29,9 @@ BIN_NAME="gd-iptv-panel"
 USE_UPX="${USE_UPX:-0}"
 
 # 检测运行环境（不依赖 head / pgrep 等精简 BusyBox 缺失命令）
-if [ -d /UUPlugin ] || [ -d /status ]; then
+if [ -d /status ]; then
     INIT_TYPE="embedded"
-    if [ -n "$INSTALL_DIR" ]; then
-        BASE_DIR="$INSTALL_DIR"
-    elif [ -d /UUPlugin ] && [ -w /UUPlugin ]; then
-        BASE_DIR="/UUPlugin/${BIN_NAME}"
-    else
-        BASE_DIR="/status/${BIN_NAME}"
-    fi
+    BASE_DIR="${INSTALL_DIR:-/status/${BIN_NAME}}"
     INSTALL_PATH="${BASE_DIR}/${BIN_NAME}"
     CONFIG_DIR="${BASE_DIR}"
     CONFIG_FILE="${CONFIG_DIR}/config.json"
