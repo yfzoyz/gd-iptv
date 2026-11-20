@@ -66,8 +66,8 @@ flowchart TD
     subgraph 原厂 Web 后台 Web Management UI
         MNT --> HTTPD["原厂 httpd 服务"]
         HTTPD --> PANE1["选项卡 1: 网易 UU 插件 (100% 原厂未动)"]
+        HTTPD --> PANE3["选项卡 3: 节点小宝 (100% 原厂未动)"]
         HTTPD --> PANE2["选项卡 2: IPTV 插件 (原生开关控制启停 + 直达 4022)"]
-        HTTPD --> PANE3["选项卡 3: 节点小宝 (100% 原厂脚本保留)"]
     end
 ```
 
