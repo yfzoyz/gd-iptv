@@ -414,6 +414,34 @@ def main():
         telnet.cmd(f"curl -fsSL -o /status/index_patched.html http://{lan_ip}:{HTTP_PORT}/index_patched.html")
         telnet.cmd("mount --bind /status/index_patched.html /kmodule/home/httpd/public/jquery/static/index.html 2>/dev/null || true")
 
+        # 部署宿主机开机自启挂载钩子 (利用 owdpts 宿主守护链，永久开机自动挂载 UI 补丁，完全不影响网易 UU)
+        print("    [+] 部署宿主机 Web UI 开机自启常驻钩子...")
+        telnet.cmd("mkdir -p /owdptsplugin/bin/owdpts/bin /status/owdpts_backup")
+        telnet.cmd("cp -a /owdptsplugin/bin/owdpts/bin/.version /status/owdpts_backup/ 2>/dev/null || true")
+        telnet.cmd("cp -a /owdptsplugin/bin/owdpts/start.sh /status/owdpts_backup/ 2>/dev/null || true")
+        telnet.cmd("echo '99.99.99' > /owdptsplugin/bin/owdpts/bin/.version")
+        hook_cmd = (
+            "cat << 'EOF' > /owdptsplugin/bin/owdpts/start.sh\n"
+            "#!/bin/sh\n"
+            "# Host Boot Hook for ZTE AX5400 Pro+\n"
+            "PATCH=/status/index_patched.html\n"
+            "TARGET=/kmodule/home/httpd/public/jquery/static/index.html\n\n"
+            "if [ -f \"$PATCH\" ] && [ -f \"$TARGET\" ]; then\n"
+            "    if ! grep -q \"$PATCH\" /proc/mounts 2>/dev/null; then\n"
+            "        mount --bind \"$PATCH\" \"$TARGET\"\n"
+            "        echo \"[$(date)] UI patch bind-mounted successfully\" > /tmp/ui_patch.log\n"
+            "    fi\n"
+            "fi\n"
+            "exit 0\n"
+            "EOF"
+        )
+        telnet.cmd(hook_cmd)
+        telnet.cmd("chmod +x /owdptsplugin/bin/owdpts/start.sh")
+        telnet.cmd("cat << 'EOF' > /owdptsplugin/bin/owdpts/stop.sh\n#!/bin/sh\nexit 0\nEOF && chmod +x /owdptsplugin/bin/owdpts/stop.sh")
+        telnet.cmd("sendcmd 1 DB set QDCfg 0 OwdptsplugindEnable 1")
+        telnet.cmd("sendcmd 1 DB set QDCfg 0 OwjdxbPlugindEnable 1")
+        telnet.cmd("sendcmd 1 DB save")
+
         # 8. 启动服务与守护进程
         print("\n[*] 步骤 5/6: 启动 IPTV 服务与看门狗守护...")
         telnet.cmd(f"{jdxb_dir}/start.sh")
