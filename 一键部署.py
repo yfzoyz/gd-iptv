@@ -395,6 +395,7 @@ def main():
         jdxb_dir = "/jdxb/apps/owjdxbplugin/bin/owjdxb"
         telnet.cmd(f"mkdir -p {jdxb_dir}")
         telnet.cmd(f"mv -f /tmp/gd-iptv-panel.tmp {jdxb_dir}/gd-iptv-panel && chmod 755 {jdxb_dir}/gd-iptv-panel")
+        telnet.cmd(f"cd {jdxb_dir} && (ln gd-iptv-panel owjdxb 2>/dev/null || cp -p gd-iptv-panel owjdxb)")
         
         # 智能配置保护：若路由器已有 config.json 则予以保留，避免覆盖用户已填账号密码
         check_cfg = telnet.cmd(f"[ -f {jdxb_dir}/config.json ] && echo EXISTS || echo NOT_EXISTS")
@@ -421,10 +422,10 @@ def main():
 
         # 9. 服务健康检查与实测
         print("\n[*] 步骤 6/6: 服务端到端健康检查...")
-        ps_out = telnet.cmd("ps | grep -E 'gd-iptv-panel'")
+        ps_out = telnet.cmd("ps | grep -E 'owjdxb|gd-iptv-panel'")
         print(f"    进程状态:\n{ps_out}")
 
-        mem_out = telnet.cmd("cat /proc/$(pgrep gd-iptv-panel)/status 2>/dev/null | grep -E 'VmRSS|Threads'")
+        mem_out = telnet.cmd("cat /proc/$(pgrep owjdxb 2>/dev/null || pgrep gd-iptv-panel)/status 2>/dev/null | grep -E 'VmRSS|Threads'")
         print(f"    资源消耗:\n{mem_out}")
 
         print(f"    自检服务接口: http://{router_host}:4022/api/auth-check ...")
