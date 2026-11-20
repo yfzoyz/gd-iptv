@@ -42,26 +42,65 @@ curl -fsSL https://raw.githubusercontent.com/yfzoyz/gd-iptv/main/install.sh | sh
 
 > 在 OpenWrt 上，脚本会自动生成 `/etc/init.d/gd-iptv-panel`（procd），并将日志指向 `/tmp`（内存盘），避免频繁写入路由器闪存。
 
-### 方式 B：ZXSLC SR6211 / 中兴 AX5400 Pro+ 路由器（ARM64 / Linux 4.1.25 / 一键自动化）
+---
 
-针对中兴 AX5400 Pro+（ZXSLC SR6211），提供纯 Python 零依赖的 Windows **一键自动化部署程序（方案 3：合二为一 · 节点小宝深度融合改造版）**：
+### 方式 B：ZXSLC SR6211 / 中兴 AX5400 Pro+ 路由器（ARM64 / Linux 4.1.25 / 宿主原生级自动化）
 
-1. **一键部署**：
-   在电脑端直接双击运行 `一键部署.bat`（或 `python 一键部署.py`），脚本将自动完成：
-   - 检查 Telnet 连通性并自动完成局域网极速文件下发；
-   - **持久化分区部署**：固化程序与守护脚本至 `/jdxb/apps/owjdxbplugin/bin/owjdxb/` 分区，UI 补丁固化至 `/status/` 分区；
-   - **网易 UU 插件完全独立**：完全不破坏 `/UUPlugin/` 分区，网易 UU 原厂加速器 100% 独立保留且功能完好；
-   - **原厂后台原生风格融合**：复用路由器原厂后台第 3 选项卡「节点小宝」为原生「IPTV插件」，100% 保持 Element UI 官方字体与质感，彻底消除鼠标悬停下划线；
-   - **原生开关联动**：绑定原生开关控制，开机与开关自启，关闭自动卸载恢复官方原厂页；
-   - **局域网 IP 与系统只读固件保护**：自适应路由器当前局域网 IP（默认自动保护 `192.168.1.2` 等自定义内网网段），绝不篡改底层只读分区；
-   - 内存盘零磨损架构：日志与运行临时文件全部分流在 `/tmp`；
-   - 自动化端到端健康检查并打印订阅地址。
+针对中兴 AX5400 Pro+（ZXSLC SR6211），提供纯 Python 零依赖的 Windows **一键自动化部署程序（终极方案：宿主原生守护 · 复用玩辰插件通道）**：
 
-2. **路由器强制还原/恢复出厂设置后的恢复流程**：
-   - 第一步：打开浏览器登录路由器后台（出厂默认 `http://192.168.5.1` 或已修改的 `http://192.168.1.2`），在「系统管理」->「备份与恢复」->「恢复配置」中上传 `AX5400 Pro+\解锁Telnet-config.bin` 激活 Telnet；
-   - 第二步：重启完成后，双击电脑上的 `一键部署.bat`，即可一键全自动恢复全部 IPTV 服务！
+#### 1. 核心架构与底层运行原理
+
+中兴 AX5400 Pro+ 采用中兴自研微内核固件架构（非标准 OpenWrt），无 `procd` 或 `/etc/init.d/`，且根分区 `/dev/root`（MTD8）为只读且 100% 占满（ENOSPC 无法写入）。本项目通过深入逆向固件后台守护链与持久化 Flash 机制，实现了真正的**宿主机 Root 原生自启与无感融合**：
+
+```mermaid
+flowchart TD
+    subgraph 宿主开机自启链 Host Boot Chain
+        INIT["开机 /etc/init.norm"] --> PC["核心管控进程 pc"]
+        PC --> OWD["宿主守护进程 /kmodule/bin/owdplugind"]
+        OWD -->|"读取 QDCfg 表<br/>OwdptsplugindEnable=1"| VER{"版本比对<br/>.version=99.99.99 > 2.3.16"}
+        VER -->|"阻断原厂覆写"| START["/owdptsplugin/bin/owdpts/start.sh"]
+        START --> MNT["mount --bind /status/index_patched.html<br/>至 /kmodule/.../index.html"]
+        START --> IPTV["宿主机后台常驻<br/>/status/iptv/gd-iptv-panel :4022"]
+    end
+
+    subgraph 原厂 Web 后台 Web Management UI
+        MNT --> HTTPD["原厂 httpd 服务"]
+        HTTPD --> PANE1["选项卡 1: 网易 UU 插件 (100% 原厂未动)"]
+        HTTPD --> PANE2["选项卡 2: IPTV 插件 (原生开关控制启停 + 直达 4022)"]
+        HTTPD --> PANE3["选项卡 3: 节点小宝 (100% 原厂脚本保留)"]
+    end
+```
+
+##### 原理解析要点：
+1. **彻底规避容器隔离陷阱**：
+   原厂「节点小宝」运行在独立 LXC 容器内（独立 Mount Namespace），容器内的挂载对宿主机的 `httpd` 隐形，导致重启后前端 UI 补丁必然回弹。而「玩辰插件」（`owdpts`）的守护进程 `owdplugind`（PID 1894，PPID 825）**直接运行在宿主机的全局根命名空间**中，具备执行全局 `mount --bind` 与宿主网络绑定的最高特权。
+2. **版本防覆盖锁（Version Locking）**：
+   固件开机时会自动检测 `/owdptsplugin/bin/owdpts/bin/.version` 是否小于 `/etc/owdpts/bin/.version`（2.3.16）。我们将持久化分区内的版本号锁定为 `99.99.99`，原厂开机解包逻辑自动判定为“最新”，**彻底终身杜绝原厂固件解包覆盖自定义脚本**。
+3. **安全持久化多 Flash 分区协同**：
+   - `/status`（MTD11，5MB JFFS2 rw）：剩余空间 >4MB，存放 548KB 的 `gd-iptv-panel` 二进制、`config.json` 与 `index_patched.html`；
+   - `/owdptsplugin/bin`（MTD10，640KB JFFS2 rw）：存放宿主自启与守护脚本；
+   - `/tmp` 与 `/var`（tmpfs 内存盘）：日志与 PID 运行时写入，**实现日常运行对 NAND Flash 零写入磨损**。
+4. **互不干扰的三权分立**：
+   - **网易 UU 插件**：位于 `/UUPlugin/`（MTD9），完全独立，分毫不碰；
+   - **IPTV 插件**：接管选项卡 2，由原厂开关原生启停；
+   - **节点小宝**：位于 `/jdxb/`（MTD15），100% 恢复官方原厂 `start.sh` 与官方脚本结构，干净无残留。
 
 ---
+
+#### 2. 一键极速部署步骤
+
+1. 在电脑端直接双击运行 `一键部署.bat`（或 `python 一键部署.py`）；
+2. 脚本将自动连接路由器 Telnet，完成文件下发、MD5 完整性校验、持久化写入与宿主守护链绑定；
+3. 部署完成后，路由器管理页面（`http://192.168.1.2`）即刻呈现原生「IPTV插件」选项卡，服务自启并开始监听 `:4022` 端口。
+
+#### 3. 路由器固件重置后的快速恢复
+
+- 第一步：登录路由器后台「系统管理」->「备份与恢复」->「恢复配置」，上传包含 Telnet 激活的配置备份包（`config.bin`），等待 1 分钟重启；
+- 第二步：双击运行 `一键部署.bat`，脚本将自动完成全套服务的全自动复原与固化！
+
+---
+
+### 方式 C：独立 Linux / 树莓派等手工运行
 
 ```sh
 /usr/bin/gd-iptv-panel -c /etc/gd-iptv-panel/config.json
