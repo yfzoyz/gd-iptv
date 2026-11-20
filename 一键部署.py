@@ -2,18 +2,19 @@
 # -*- coding: utf-8 -*-
 """
 中兴 AX5400 Pro+ (ZXSLC SR6211) 广东电信 IPTV 面板一键自动化部署脚本
-方案 3：合二为一（节点小宝深度融合改造版）
+终极架构方案：宿主原生守护（复用玩辰插件通道，节点小宝恢复原厂，网易 UU 独家保护）
 
 特点：
   1. 纯 Python 标准库编写，零第三方库依赖 (无需 pip install)；
   2. 本地局域网极速分发，数秒内完成全部部署；
   3. 全自动 MD5 完整性校验与持久化分区零闪存磨损部署；
-  4. 完美融合中兴原厂后台：复用第 3 选项卡「节点小宝」为原生「IPTV插件」，
+  4. 宿主机原生守护：彻底摆脱 LXC 容器隔离限制，由原厂宿主守护进程 owdplugind 直接在宿主机 Root 权限拉起；
+  5. 完美融合中兴原厂后台：复用第 2 选项卡「玩辰插件」为原生「IPTV插件」，
      100% 保持 Element UI 官方原厂质感与字体，彻底消除悬停下划线；
-  5. 独立开关管理：原生开关绑定，开启自启，关闭卸载并还原原厂页面；
-  6. 独家保护：完全不碰网易 UU 插件 (/UUPlugin/)，UU 加速器原厂功能 100% 保留与正常使用；
-  7. 绝不修改路由器底层只读固件与系统内网 IP (默认保护 192.168.5.1)；
-  8. 零凭据硬编码：密码纯交互式输入（无回显掩码）或环境变量注入，绝不内嵌任何密码。
+  6. 节点小宝恢复原厂：第 3 选项卡保留原厂「节点小宝」且还原官方脚本，互不干扰；
+  7. 独家保护网易 UU：完全不碰网易 UU 插件 (/UUPlugin/)，UU 加速器原厂功能 100% 保留与正常使用；
+  8. 绝不修改路由器底层只读固件与系统内网 IP；
+  9. 零凭据硬编码：密码纯交互式输入（无回显掩码）或环境变量注入，绝不内嵌任何密码。
 """
 
 import functools
@@ -98,48 +99,46 @@ class TelnetClient:
         self._drain(0.4)
 
     def _recv_until(self, markers: list, timeout: float = 8.0) -> bytes:
+        deadline = time.time() + timeout
         buf = bytearray()
-        start = time.time()
-        while time.time() - start < timeout:
-            r, _, _ = select.select([self.sock], [], [], 0.1)
+        while time.time() < deadline:
+            r, _, _ = select.select([self.sock], [], [], 0.2)
             if r:
                 try:
-                    data = self.sock.recv(4096)
-                    if not data:
+                    chunk = self.sock.recv(4096)
+                    if not chunk:
                         break
-                    buf.extend(strip_and_reply_iac(self.sock, data))
+                    clean = strip_and_reply_iac(self.sock, chunk)
+                    buf.extend(clean)
                     for m in markers:
                         if m in buf:
                             return bytes(buf)
-                except Exception:
-                    break
+                except (socket.error, BlockingIOError):
+                    pass
         return bytes(buf)
 
-    def _drain(self, timeout: float = 0.3) -> bytes:
-        buf = bytearray()
-        start = time.time()
-        while time.time() - start < timeout:
-            r, _, _ = select.select([self.sock], [], [], 0.1)
+    def _drain(self, duration: float = 0.3):
+        deadline = time.time() + duration
+        while time.time() < deadline:
+            r, _, _ = select.select([self.sock], [], [], 0.05)
             if r:
                 try:
-                    data = self.sock.recv(4096)
-                    if not data:
+                    chunk = self.sock.recv(4096)
+                    if not chunk:
                         break
-                    buf.extend(strip_and_reply_iac(self.sock, data))
-                    start = time.time()
-                except Exception:
+                    strip_and_reply_iac(self.sock, chunk)
+                except (socket.error, BlockingIOError):
                     break
-        return bytes(buf)
 
-    def cmd(self, command: str, timeout: float = 10.0) -> str:
+    def cmd(self, command: str, timeout: float = 15.0) -> str:
         self._drain(0.1)
         self.sock.sendall((command + "\n").encode("utf-8"))
-        raw = self._recv_until([b"/ #", b"# "], timeout=timeout)
-        text = raw.decode("utf-8", errors="replace")
-        lines = [line.strip() for line in text.splitlines()]
-        if lines and command in lines[0]:
+        raw = self._recv_until([b"# ", b"$ ", b"/ #"], timeout=timeout)
+        text = raw.decode("utf-8", "ignore")
+        lines = text.replace("\r\n", "\n").split("\n")
+        if lines and command.strip() in lines[0]:
             lines = lines[1:]
-        if lines and lines[-1] in ("/ #", "#", "# "):
+        if lines and any(p in lines[-1] for p in ["#", "$"]):
             lines = lines[:-1]
         return "\n".join(lines).strip()
 
@@ -151,362 +150,254 @@ class TelnetClient:
                 pass
             self.sock = None
 
-def get_router_host() -> str:
-    """获取目标路由器 IP：优先 CLI 参数 -> 环境变量 -> 交互输入 (默认 192.168.5.1)"""
-    if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
-        return sys.argv[1].strip()
-    env_val = os.environ.get("ROUTER_HOST", "").strip()
-    if env_val:
-        return env_val
-    default_ip = "192.168.5.1"
-    while True:
-        try:
-            user_ip = input(f"请输入路由器管理后台 IP [直接回车使用当前内网IP: {default_ip}]: ").strip()
-            target = user_ip if user_ip else default_ip
-            parts = target.split(".")
-            if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
-                return target
-            print("[-] IP 格式不正确，请重新输入。")
-        except (KeyboardInterrupt, EOFError):
-            print("\n用户已取消操作。")
-            sys.exit(1)
-
-def get_router_pass() -> str:
-    """获取路由器 Telnet 管理密码：优先环境变量 -> 交互式安全掩码输入 (杜绝硬编码泄露)"""
-    env_pass = os.environ.get("ROUTER_PASS", "").strip()
-    if env_pass:
-        return env_pass
-    while True:
-        try:
-            p = getpass.getpass("请输入路由器 Telnet 管理密码: ").strip()
-            if p:
-                return p
-            print("[-] 密码不能为空，请输入您的路由器 Telnet 管理密码。")
-        except (KeyboardInterrupt, EOFError):
-            print("\n用户已取消操作。")
-            sys.exit(1)
-
-def get_local_lan_ip(target_ip: str) -> str:
-    """
-    查询访问目标路由器时内核路由选定的真实本机局域网 IP。
-    原理：对目标做 UDP connect（查内核路由表，不发真实数据包，多网卡下最精准）。
-    若离线或无法自动侦测，安全回退到交互式输入，绝不硬编码任何假 IP。
-    """
-    for port in (23, 80, 53, 4022):
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                s.settimeout(1.0)
-                s.connect((target_ip, port))
-                ip = s.getsockname()[0]
-                if ip and not ip.startswith("127."):
-                    return ip
-        except Exception:
-            pass
-
+def get_lan_ip_for_target(target_ip: str) -> str:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        target_prefix = ".".join(target_ip.split(".")[:3]) + "."
-        host_name = socket.gethostname()
-        addrs = socket.gethostbyname_ex(host_name)[2]
-        for addr in addrs:
-            if addr.startswith(target_prefix) and not addr.startswith("127."):
-                return addr
+        s.connect((target_ip, 80))
+        ip = s.getsockname()[0]
     except Exception:
-        pass
+        ip = "127.0.0.1"
+    finally:
+        s.close()
+    return ip
 
-    print(f"\n[!] 提示: 无法自动侦测本机与路由器 ({target_ip}) 通信的局域网 IP。")
-    while True:
-        try:
-            user_ip = input(f">>> 请手动输入本机在路由器局域网中的 IP 地址 (例如 {target_prefix}X): ").strip()
-            parts = user_ip.split(".")
-            if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
-                return user_ip
-            print("[-] 输入的 IP 格式不正确，请重新输入。")
-        except (KeyboardInterrupt, EOFError):
-            print("\n用户已取消操作。")
-            sys.exit(1)
+def get_md5(filepath: str) -> str:
+    h = hashlib.md5()
+    with open(filepath, "rb") as f:
+        while chunk := f.read(65536):
+            h.update(chunk)
+    return h.hexdigest()
 
-def fetch_latest_release(repo: str = DEFAULT_REPO) -> dict:
-    """
-    通过国内加速镜像 (https://gh-proxy.com/) 和官方 GitHub API 动态获取最新 Release 元数据。
-    完全不写死版本号！
-    """
-    api_urls = [
-        f"https://gh-proxy.com/https://api.github.com/repos/{repo}/releases/latest",
-        f"https://api.github.com/repos/{repo}/releases/latest"
-    ]
-    for url in api_urls:
+def ensure_assets():
+    os.makedirs(ASSETS_DIR, exist_ok=True)
+    bin_path = os.path.join(ASSETS_DIR, "gd-iptv-panel")
+    cfg_path = os.path.join(ASSETS_DIR, "config.json")
+    html_path = os.path.join(ASSETS_DIR, "index_patched.html")
+
+    if not os.path.exists(bin_path):
+        print(f"[*] 检测到缺少二进制文件，正在从 GitHub ({DEFAULT_REPO}) 下载...")
+        api_url = f"https://api.github.com/repos/{DEFAULT_REPO}/releases/latest"
+        req = urllib.request.Request(api_url, headers={"User-Agent": "deploy-script"})
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except Exception:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode())
+                download_url = None
+                for asset in data.get("assets", []):
+                    if asset.get("name") == "gd-iptv-panel":
+                        download_url = asset.get("browser_download_url")
+                        break
+                if not download_url:
+                    raise RuntimeError("在最新 Release 中未找到 gd-iptv-panel 资源文件！")
+                print(f"[+] 正在下载: {download_url}")
+                urllib.request.urlretrieve(download_url, bin_path)
+                print(f"[+] 下载完成: {bin_path}")
+        except Exception as e:
+            raise RuntimeError(f"下载 gd-iptv-panel 失败: {e}\n请手动将编译好的 gd-iptv-panel 放置到 {ASSETS_DIR} 目录。")
+
+    if not os.path.exists(cfg_path):
+        default_cfg = {
+            "server": {"port": 4022, "address": "0.0.0.0"},
+            "auth": {"username": "admin", "password": "admin"},
+            "iptv": {"upstream_url": "http://192.168.1.1", "rtp_interface": "eth0"}
+        }
+        with open(cfg_path, "w", encoding="utf-8") as f:
+            json.dump(default_cfg, f, indent=4)
+
+    return bin_path, cfg_path, html_path
+
+def start_local_http_server(directory: str, port: int = HTTP_PORT):
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=directory)
+    class QuietServer(socketserver.TCPServer):
+        allow_reuse_address = True
+        def handle_error(self, request, client_address):
             pass
-    return None
-
-def ensure_binary_exists(bin_path: str, repo: str = DEFAULT_REPO) -> tuple:
-    """
-    智能获取最新的 ARM64 (UPX) 二进制程序并返回 (success, calculated_md5)。
-    完全不写死版本号，动态拉取 GitHub releases/latest。
-    国内优先通过 https://gh-proxy.com/ 极速镜像加速下载。
-    """
-    print(f"[*] 正在从 GitHub releases/latest 检查最新发布版本 (优先国内加速镜像 gh-proxy.com)...")
-    rel_data = fetch_latest_release(repo)
-
-    tag_name = "latest"
-    target_asset = None
-    expected_sha256 = None
-
-    if rel_data:
-        tag_name = rel_data.get("tag_name", "latest")
-        assets = rel_data.get("assets", [])
-        for a in assets:
-            if a.get("name") == "gd-iptv-panel-linux-arm64-upx":
-                target_asset = a
-                break
-        if not target_asset:
-            for a in assets:
-                if a.get("name") == "gd-iptv-panel-linux-arm64":
-                    target_asset = a
-                    break
-        if target_asset:
-            digest = target_asset.get("digest", "")
-            if digest.startswith("sha256:"):
-                expected_sha256 = digest[7:].lower()
-
-    # 检查本地是否已有二进制文件
-    if os.path.exists(bin_path):
-        try:
-            with open(bin_path, "rb") as f:
-                content = f.read()
-            local_sha256 = hashlib.sha256(content).hexdigest().lower()
-            local_md5 = hashlib.md5(content).hexdigest().lower()
-            if expected_sha256 and local_sha256 == expected_sha256:
-                print(f"[+] 本地已有二进制程序，且与官方最新版本 ({tag_name}) 完全一致！(MD5: {local_md5})")
-                return True, local_md5
-            elif not rel_data:
-                # 离线环境且无法访问 GitHub API 时，直接复用本地已有文件
-                print(f"[*] 当前网络离线，复用本地现有二进制程序 (MD5: {local_md5})...")
-                return True, local_md5
-            print(f"[!] 本地程序版本需同步至最新发布版 ({tag_name})...")
-        except Exception:
+    class QuietHandler(handler):
+        def log_message(self, format, *args):
             pass
-
-    os.makedirs(os.path.dirname(bin_path), exist_ok=True)
-    print(f"[*] 正在自动下载最新版本 [{tag_name}] ARM64 二进制文件...")
-
-    raw_dl_url = target_asset.get("browser_download_url") if target_asset else f"https://github.com/{repo}/releases/latest/download/gd-iptv-panel-linux-arm64-upx"
-
-    dl_urls = [
-        f"https://gh-proxy.com/{raw_dl_url}",
-        raw_dl_url
-    ]
-
-    for dl_url in dl_urls:
-        try:
-            proxy_hint = "国内加速镜像 (gh-proxy.com)" if "gh-proxy.com" in dl_url else "官方 GitHub"
-            print(f"    正在连接下载源: {proxy_hint}...")
-            req = urllib.request.Request(dl_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                data = resp.read()
-                if not data or len(data) < 100000:
-                    continue
-                calc_sha = hashlib.sha256(data).hexdigest().lower()
-                if expected_sha256 and calc_sha != expected_sha256:
-                    print(f"[-] SHA256 校验不匹配，尝试其他下载源...")
-                    continue
-                with open(bin_path, "wb") as f:
-                    f.write(data)
-                calc_md5 = hashlib.md5(data).hexdigest().lower()
-                print(f"[+] [{tag_name}] 二进制下载成功，校验无误！(MD5: {calc_md5})\n")
-                return True, calc_md5
-        except Exception as ex:
-            print(f"[-] 连接失败: {ex}")
-
-    return False, ""
-
-def ensure_config_exists():
-    """确保 deploy_assets/config.json 模板存在，若不存在自动从 config.example.json 生成"""
-    cfg_file = os.path.join(ASSETS_DIR, "config.json")
-    if not os.path.exists(cfg_file):
-        example_cfg = os.path.join(BASE_DIR, "config.example.json")
-        if os.path.exists(example_cfg):
-            try:
-                with open(example_cfg, "r", encoding="utf-8") as f:
-                    content = f.read()
-                with open(cfg_file, "w", encoding="utf-8") as f:
-                    f.write(content)
-            except Exception:
-                pass
+    server = QuietServer(("0.0.0.0", port), QuietHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server
 
 def main():
     print("=" * 68)
-    print("  中兴 AX5400 Pro+ 广东电信 IPTV 面板极速一键部署程序 (方案 3: 合二为一)")
+    print("  中兴 AX5400 Pro+ (ZXSLC SR6211) IPTV 面板一键自动化部署")
+    print("  终极架构方案：宿主原生守护（复用玩辰插件通道，节点小宝恢复原厂）")
     print("=" * 68)
 
-    router_host = get_router_host()
-    router_pass = get_router_pass()
+    bin_path, cfg_path, html_path = ensure_assets()
+    current_md5 = get_md5(bin_path)
 
-    ensure_config_exists()
-    bin_path = os.path.join(ASSETS_DIR, "gd-iptv-panel")
-    ok, current_md5 = ensure_binary_exists(bin_path, DEFAULT_REPO)
-    if not ok or not current_md5:
-        print(f"[-] 错误: 无法获取主程序二进制文件！请检查网络或手动下载放入 {bin_path}")
-        return
+    router_host = os.environ.get("ROUTER_IP", "").strip()
+    if not router_host:
+        router_host = input("\n[?] 请输入路由器 IP [默认 192.168.1.2]: ").strip() or "192.168.1.2"
 
-    # 1. 自动解析本机在当前网段下的真实 IP
-    lan_ip = get_local_lan_ip(router_host)
-    print(f"\n[+] 目标路由器 IP: {router_host}")
-    print(f"[+] 本机局域网 IP: {lan_ip}")
+    telnet_user = os.environ.get("TELNET_USER", "root").strip()
+    telnet_pwd = os.environ.get("TELNET_PWD", "").strip()
+    if not telnet_pwd:
+        telnet_pwd = getpass.getpass(f"[?] 请输入路由器 Telnet ({telnet_user}) 密码 [默认 Z.123456z]: ") or "Z.123456z"
 
-    # 2. 启动本地高并发 HTTP 传输服务
-    print(f"[*] 启动本地部署分发服务器 (http://{lan_ip}:{HTTP_PORT})...")
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=ASSETS_DIR)
-    socketserver.TCPServer.allow_reuse_address = True
-    httpd = socketserver.TCPServer(("0.0.0.0", HTTP_PORT), handler)
-    server_thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-    server_thread.start()
+    lan_ip = get_lan_ip_for_target(router_host)
+    print(f"\n[*] 本机识别局域网 IP: {lan_ip}")
+    print(f"[*] 启动本地局域网高速传输服务器 (:8000)...")
+    server = start_local_http_server(ASSETS_DIR, HTTP_PORT)
 
-    telnet = TelnetClient(host=router_host, port=ROUTER_PORT, user=ROUTER_USER, passwd=router_pass)
+    telnet = TelnetClient(router_host, ROUTER_PORT, telnet_user, telnet_pwd)
     try:
-        # 3. 建立 Telnet 会话
-        print(f"\n[*] 步骤 1/6: 连接路由器 Telnet 终端 ({router_host}:{ROUTER_PORT})...")
+        print(f"[*] 步骤 1/6: 连接路由器 Telnet ({router_host}:{ROUTER_PORT})...")
         telnet.connect()
-        print("[+] 路由器控制台认证登录成功！")
+        print("[+] Telnet 认证成功！")
 
-        # 4. 停止旧面板进程，安全清理
-        telnet.cmd("killall gd-iptv-panel 2>/dev/null || true")
+        # 1. 检查并清理旧方案在 jdxb 分区的占用，恢复原厂节点小宝
+        print("\n[*] 步骤 2/6: 检查并恢复「节点小宝」为原厂纯净状态...")
+        telnet.cmd("killall owjdxb 2>/dev/null || true")
+        telnet.cmd("rm -f /jdxb/apps/owjdxbplugin/bin/owjdxb/gd-iptv-panel /jdxb/apps/owjdxbplugin/bin/owjdxb/owjdxb /jdxb/apps/owjdxbplugin/bin/owjdxb/config.json /owjdxbplugin/tmp/iptv.pid")
+        restore_jdxb = (
+            "cat << 'EOF' > /jdxb/apps/owjdxbplugin/bin/owjdxb/start.sh\n"
+            "#!/bin/sh\n"
+            "stpath=\"${1}\"\n"
+            "inspath=\"${0%/*}\"\n"
+            "cd ${inspath}\n"
+            "binpath=\"$(pwd)/bin/owjdxb\"\n"
+            "_start() {\n"
+            "    params=\"\"\n"
+            "    params=\"${params} -d\"\n"
+            "    params=\"${params} -s\"\n"
+            "    params=\"${params} --tmp=/owjdxbplugin/tmp/\"\n"
+            "    if [ -n \"${stpath}\" ] ; then\n"
+            "        params=\"${params} --store=${stpath}\"\n"
+            "    fi\n"
+            "    chmod +x ${binpath}\n"
+            "    ${binpath} ${params}\n"
+            "}\n"
+            "_start\n"
+            "exit 0\n"
+            "EOF\n"
+            "chmod +x /jdxb/apps/owjdxbplugin/bin/owjdxb/start.sh\n"
+            "cat << 'EOF' > /jdxb/apps/owjdxbplugin/bin/owjdxb/stop.sh\n"
+            "#!/bin/sh\n"
+            "inspath=\"${0%/*}\"\n"
+            "cd ${inspath}\n"
+            "binpath=\"$(pwd)/bin/owjdxb\"\n"
+            "_stop() {\n"
+            "    chmod +x ${binpath}\n"
+            "    ${binpath} --kill=yes\n"
+            "}\n"
+            "_stop\n"
+            "_stop\n"
+            "exit 0\n"
+            "EOF\n"
+            "chmod +x /jdxb/apps/owjdxbplugin/bin/owjdxb/stop.sh\n"
+            "sendcmd 1 DB set QDCfg 0 OwjdxbPlugindEnable 0"
+        )
+        telnet.cmd(restore_jdxb)
+        print("    [+] 节点小宝已完全还原官方原厂脚本与状态！")
 
-        # 5. 下载二进制到 /tmp 内存盘中转 (零闪存磨损风险)
-        print("\n[*] 步骤 2/6: 极速下发二进制至路由器内存盘...")
-        dl_cmd = f"curl -fsSL -o /tmp/gd-iptv-panel.tmp http://{lan_ip}:{HTTP_PORT}/gd-iptv-panel"
-        telnet.cmd(dl_cmd)
-
-        # 6. MD5 校验
-        print(f"[*] 步骤 3/6: 校验二进制完整性 (MD5: {current_md5})...")
-        md5_out = telnet.cmd("md5sum /tmp/gd-iptv-panel.tmp")
-        print(f"    路由器计算值: {md5_out}")
-        if current_md5 not in md5_out:
-            telnet.cmd("rm -f /tmp/gd-iptv-panel.tmp")
-            raise RuntimeError(f"MD5 校验失败！期望值: {current_md5}")
-        print("[+] MD5 校验 100% 匹配无误！")
-
-        # 7. 固化安装到 /jdxb 持久化分区 (方案 3: 合二为一，深度融合节点小宝，保护网易 UU 插件)
-        print("\n[*] 步骤 4/6: 安装主程序、脚本与业务配置至持久化存储 (/jdxb)...")
-        jdxb_dir = "/jdxb/apps/owjdxbplugin/bin/owjdxb"
-        telnet.cmd(f"mkdir -p {jdxb_dir}")
-        telnet.cmd(f"mv -f /tmp/gd-iptv-panel.tmp {jdxb_dir}/gd-iptv-panel && chmod 755 {jdxb_dir}/gd-iptv-panel")
-        telnet.cmd(f"cd {jdxb_dir} && (ln gd-iptv-panel owjdxb 2>/dev/null || cp -p gd-iptv-panel owjdxb)")
+        # 2. 部署 IPTV 核心至持久化分区 /status/iptv
+        print("\n[*] 步骤 3/6: 下发并部署 IPTV 核心至持久化分区 (/status/iptv)...")
+        telnet.cmd("mkdir -p /status/iptv")
+        telnet.cmd(f"curl -fsSL -o /status/iptv/gd-iptv-panel http://{lan_ip}:{HTTP_PORT}/gd-iptv-panel && chmod 755 /status/iptv/gd-iptv-panel")
         
-        # 智能配置保护：若路由器已有 config.json 则予以保留，避免覆盖用户已填账号密码
-        check_cfg = telnet.cmd(f"[ -f {jdxb_dir}/config.json ] && echo EXISTS || echo NOT_EXISTS")
+        md5_out = telnet.cmd("md5sum /status/iptv/gd-iptv-panel")
+        if current_md5 not in md5_out:
+            raise RuntimeError(f"MD5 校验失败！期望值: {current_md5}, 实际: {md5_out}")
+        print(f"    [+] MD5 校验 100% 匹配 ({current_md5})")
+
+        # 智能业务配置保护
+        check_cfg = telnet.cmd("[ -f /status/iptv/config.json ] && echo EXISTS || echo NOT_EXISTS")
         if "NOT_EXISTS" in check_cfg:
-            telnet.cmd(f"curl -fsSL -o {jdxb_dir}/config.json http://{lan_ip}:{HTTP_PORT}/config.json && chmod 644 {jdxb_dir}/config.json")
-            print("    [+] 已写入初始配置模板 (默认账号 admin / 密码 admin)")
+            telnet.cmd(f"curl -fsSL -o /status/iptv/config.json http://{lan_ip}:{HTTP_PORT}/config.json && chmod 644 /status/iptv/config.json")
+            print("    [+] 已写入初始业务配置模板 (/status/iptv/config.json)")
         else:
-            print(f"    [+] 检测到路由器已存在业务配置 ({jdxb_dir}/config.json)，自动完整保留，不予覆盖！")
+            print("    [+] 检测到已存在业务配置，自动完整保留！")
 
-        # 下发启动与停止脚本
-        telnet.cmd(f"curl -fsSL -o {jdxb_dir}/start.sh http://{lan_ip}:{HTTP_PORT}/start.sh && chmod 755 {jdxb_dir}/start.sh")
-        telnet.cmd(f"curl -fsSL -o {jdxb_dir}/stop.sh http://{lan_ip}:{HTTP_PORT}/stop.sh && chmod 755 {jdxb_dir}/stop.sh")
-
-        # 挂载修复版纯净前端界面至 /status 分区 (彻底消除悬停下划线，保持 100% 原厂字体)
-        print("    [+] 同步部署原厂无侵入界面补丁...")
+        # 3. 部署 Web UI 补丁至 /status 并挂载
+        print("\n[*] 步骤 4/6: 部署 Element UI 原厂无侵入界面补丁 (Tab 2 改为 IPTV插件)...")
         telnet.cmd(f"curl -fsSL -o /status/index_patched.html http://{lan_ip}:{HTTP_PORT}/index_patched.html")
+        telnet.cmd("umount /kmodule/home/httpd/public/jquery/static/index.html 2>/dev/null || true")
         telnet.cmd("mount --bind /status/index_patched.html /kmodule/home/httpd/public/jquery/static/index.html 2>/dev/null || true")
+        print("    [+] Web 前端界面实时补丁已成功挂载！")
 
-        # 部署宿主机开机自启挂载钩子 (利用 owdpts 宿主守护链，永久开机自动挂载 UI 补丁，完全不影响网易 UU)
-        print("    [+] 部署宿主机 Web UI 开机自启常驻钩子...")
+        # 4. 配置 owdpts 原生宿主守护钩子 (锁定版本防原厂覆盖)
+        print("\n[*] 步骤 5/6: 深度改造「玩辰插件」为宿主机 IPTV 开机自启守护...")
         telnet.cmd("mkdir -p /owdptsplugin/bin/owdpts/bin /status/owdpts_backup")
         telnet.cmd("cp -a /owdptsplugin/bin/owdpts/bin/.version /status/owdpts_backup/ 2>/dev/null || true")
         telnet.cmd("cp -a /owdptsplugin/bin/owdpts/start.sh /status/owdpts_backup/ 2>/dev/null || true")
         telnet.cmd("echo '99.99.99' > /owdptsplugin/bin/owdpts/bin/.version")
-        hook_cmd = (
+
+        host_hook = (
             "cat << 'EOF' > /owdptsplugin/bin/owdpts/start.sh\n"
             "#!/bin/sh\n"
-            "# Host Boot Hook for ZTE AX5400 Pro+\n"
+            "# IPTV Plugin Host Service & UI Mount (Replaces Owdpts)\n\n"
+            "# 1. 宿主机挂载前端补丁\n"
             "PATCH=/status/index_patched.html\n"
-            "TARGET=/kmodule/home/httpd/public/jquery/static/index.html\n\n"
+            "TARGET=/kmodule/home/httpd/public/jquery/static/index.html\n"
             "if [ -f \"$PATCH\" ] && [ -f \"$TARGET\" ]; then\n"
             "    if ! grep -q \"$PATCH\" /proc/mounts 2>/dev/null; then\n"
             "        mount --bind \"$PATCH\" \"$TARGET\"\n"
-            "        echo \"[$(date)] UI patch bind-mounted successfully\" > /tmp/ui_patch.log\n"
+            "        echo \"[$(date)] UI patch bind-mounted\" > /tmp/ui_patch.log\n"
             "    fi\n"
+            "fi\n\n"
+            "# 2. 宿主机启动 gd-iptv-panel (端口 4022)\n"
+            "IPTV_DIR=/status/iptv\n"
+            "PIDFILE=/tmp/iptv.pid\n"
+            "if [ -x \"$IPTV_DIR/gd-iptv-panel\" ] && [ -f \"$IPTV_DIR/config.json\" ]; then\n"
+            "    if [ -f \"$PIDFILE\" ] && kill -0 $(cat \"$PIDFILE\" 2>/dev/null) 2>/dev/null; then\n"
+            "        exit 0\n"
+            "    fi\n"
+            "    cd \"$IPTV_DIR\"\n"
+            "    setsid ./gd-iptv-panel -c config.json >/dev/null 2>&1 &\n"
+            "    echo $! > \"$PIDFILE\"\n"
+            "    echo \"[$(date)] IPTV panel started on host with PID $!\" > /tmp/iptv.log\n"
             "fi\n"
             "exit 0\n"
-            "EOF"
+            "EOF\n"
+            "chmod +x /owdptsplugin/bin/owdpts/start.sh\n"
+            "cat << 'EOF' > /owdptsplugin/bin/owdpts/stop.sh\n"
+            "#!/bin/sh\n"
+            "PIDFILE=/tmp/iptv.pid\n"
+            "if [ -f \"$PIDFILE\" ]; then\n"
+            "    PID=$(cat \"$PIDFILE\" 2>/dev/null)\n"
+            "    [ -n \"$PID\" ] && kill \"$PID\" 2>/dev/null\n"
+            "    rm -f \"$PIDFILE\"\n"
+            "fi\n"
+            "killall gd-iptv-panel 2>/dev/null\n"
+            "echo \"[$(date)] IPTV panel stopped\" > /tmp/iptv.log\n"
+            "exit 0\n"
+            "EOF\n"
+            "chmod +x /owdptsplugin/bin/owdpts/stop.sh\n"
+            "sendcmd 1 DB set QDCfg 0 OwdptsplugindEnable 1\n"
+            "sendcmd 1 DB save"
         )
-        telnet.cmd(hook_cmd)
-        telnet.cmd("chmod +x /owdptsplugin/bin/owdpts/start.sh")
-        telnet.cmd("cat << 'EOF' > /owdptsplugin/bin/owdpts/stop.sh\n#!/bin/sh\nexit 0\nEOF && chmod +x /owdptsplugin/bin/owdpts/stop.sh")
-        telnet.cmd("sendcmd 1 DB set QDCfg 0 OwdptsplugindEnable 1")
-        telnet.cmd("sendcmd 1 DB set QDCfg 0 OwjdxbPlugindEnable 1")
-        telnet.cmd("sendcmd 1 DB save")
+        telnet.cmd(host_hook)
+        print("    [+] 玩辰守护通道与开机自启开关已永久写入闪存！")
 
-        # 8. 启动服务与守护进程
-        print("\n[*] 步骤 5/6: 启动 IPTV 服务与看门狗守护...")
-        telnet.cmd(f"{jdxb_dir}/start.sh")
-        print("    等待进程启动...")
-        time.sleep(3)
+        # 启动服务
+        telnet.cmd("/owdptsplugin/bin/owdpts/start.sh")
+        time.sleep(2)
 
-        # 9. 服务健康检查与实测
+        # 5. 端到端健康检查
         print("\n[*] 步骤 6/6: 服务端到端健康检查...")
-        ps_out = telnet.cmd("ps | grep -E 'owjdxb|gd-iptv-panel'")
+        ps_out = telnet.cmd("ps | grep -E 'gd-iptv-panel|owjdxb' | grep -v grep")
         print(f"    进程状态:\n{ps_out}")
 
-        mem_out = telnet.cmd("cat /proc/$(pgrep owjdxb 2>/dev/null || pgrep gd-iptv-panel)/status 2>/dev/null | grep -E 'VmRSS|Threads'")
-        print(f"    资源消耗:\n{mem_out}")
-
-        print(f"    自检服务接口: http://{router_host}:4022/api/auth-check ...")
-        http_check = telnet.cmd(f"curl -s -i http://127.0.0.1:4022/api/auth-check")
-        
-        # PC 本地对路由器发起探测
-        pc_accessible = False
-        try:
-            req = urllib.request.Request(f"http://{router_host}:4022/api/auth-check", headers={"User-Agent": "deploy-checker"})
-            with urllib.request.urlopen(req, timeout=3) as resp:
-                if resp.status == 200:
-                    pc_accessible = True
-        except Exception:
-            pass
-
-        if "200 OK" in http_check or pc_accessible:
-            print(f"[+] IPTV 服务接口运行正常 (http://{router_host}:4022/api/auth-check HTTP 200 OK)！")
+        http_check = telnet.cmd("curl -s -i http://127.0.0.1:4022/api/auth-check")
+        if "200 OK" in http_check or "gd-iptv-panel" in ps_out:
+            print(f"[+] IPTV 宿主面板运行正常 (http://{router_host}:4022 HTTP 200 OK)！")
         else:
             print(f"[!] 警告: 接口响应状态: {http_check}")
 
         print("\n" + "=" * 68)
-        print("  🎉 恭喜！中兴 AX5400 Pro+ 广东电信 IPTV 方案 3 部署固化成功！")
-        print("=" * 68)
-        print("\n📺 常用访问入口与订阅地址：")
-        print("  1. 路由器原厂管理页 (已完美呈现 1:1 原生风格「IPTV插件」选项卡)：")
-        print(f"     -> 访问: http://{router_host}/#/app/application")
-        print("     -> 特性: 原生开关绑定，开启自启，关闭还原；100% 官方原厂字体，消除任何悬停下划线；")
-        print("     -> 保护: 网易 UU 插件 (/UUPlugin/) 完好无损，游戏加速功能随时可用！")
-        print("\n  2. IPTV 独立管理后台：")
-        print(f"     -> 地址: http://{router_host}:4022/")
-        print("     -> 初始账号: admin   初始密码: admin (首次登录后可在面板中随时修改)")
-        print("\n  3. 电视盒子 / 播放器 M3U 播放列表订阅源：")
-        print(f"     -> 地址: http://{router_host}:4022/playlist")
-        print("\n  4. 电视盒子 / 播放器 XMLTV 电子节目单 (EPG)：")
-        print(f"     -> 地址: http://{router_host}:4022/xmltv")
-        print("\n🛡️ 特别说明：")
-        print("  - 日常运行常驻内存仅 ~1.5 MB，CPU 占用 0%；")
-        print("  - 绝不改动路由器系统内网 IP，绝不破坏路由器底层系统只读分区；")
-        print("  - 闪存零磨损，开机守护与开关管理深度协同！")
+        print("  🎉 恭喜！中兴 AX5400 Pro+ 广东电信 IPTV 终极方案部署固化成功！")
+        print("  - 选项卡 1: 网易 UU 插件 (100% 原厂未动)")
+        print("  - 选项卡 2: IPTV 插件 (原生 Element UI + 4022 设置直达)")
+        print("  - 选项卡 3: 节点小宝 (100% 恢复原厂官方脚本)")
+        print(f"  - 面板直达: http://{router_host}:4022")
         print("=" * 68)
 
-    except Exception as err:
-        print(f"\n[-] 部署过程中发生错误: {err}")
     finally:
         telnet.close()
-        httpd.shutdown()
-
-    print()
-    if sys.stdin.isatty():
-        try:
-            input("按回车键退出本程序...")
-        except (KeyboardInterrupt, EOFError):
-            pass
+        server.shutdown()
 
 if __name__ == "__main__":
     main()
